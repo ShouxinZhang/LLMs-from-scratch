@@ -1,0 +1,7 @@
+{
+  "action_accuracy": 0.984375,
+  "intercept_mse": 29.383534812927245,
+  "attn_last_two_mass": 0.4828485704889317,
+  "rollout_catch_rate": 0.921875,
+  "one_frame_baseline_accuracy": 0.015625
+}

@@ -1,0 +1,551 @@
+\documentclass[12pt,a4paper]{ctexart}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{array,booktabs,longtable}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc,fit,positioning}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\lstdefinestyle{py}{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{ForestGreen!70!black},
+  stringstyle=\color{BrickRed},
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black!20},
+  backgroundcolor=\color{black!2}
+}
+
+\newcommand{\filepath}[1]{\texttt{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+
+\title{第 3 章 Bonus：高效 Multi-Head Attention 学习教程\\\large 基于 \filepath{ch03/02\_bonus\_efficient-multihead-attention/mha-implementations.ipynb}}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+\bigskip
+
+\section{这份教程解决什么问题}
+
+主章节 \filepath{ch03/01\_main-chapter-code/ch03.ipynb} 已经把 attention 从零推到了
+可训练的 multi-head attention。这个 bonus notebook 要回答的不是
+``attention 是什么''，而是更工程化的问题：
+
+\begin{quote}
+当你已经知道 causal multi-head attention 的数学定义后，应该如何在 PyTorch 里把它写得更快、更省内存、更接近现代 LLM 的实际实现？
+\end{quote}
+
+所以这份中文教程的目标是把 notebook 里的多种实现方式重新组织成一条清晰主线：
+
+\begin{enumerate}
+  \item 第 3 章里最朴素的 MHA 实现到底慢在什么地方；
+  \item 为什么合并 QKV 投影通常比三套线性层更自然；
+  \item \code{einsum} 版和矩阵变形版本质上是不是一回事；
+  \item PyTorch 的 \code{scaled\_dot\_product\_attention} 为什么往往更快；
+  \item \code{nn.MultiheadAttention} 的默认行为和 ``高性能模式'' 差在哪；
+  \item FlexAttention 解决了什么问题，又有哪些现实限制；
+  \item 面对训练、推理、教学、调试四种不同目标时，该选哪一种实现。
+\end{enumerate}
+
+\section{先看整条主线}
+
+这份 bonus 的核心不是记住 8 个类名，而是看清楚一条优化链：
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=1.1cm,
+  stage/.style={draw, rounded corners, fill=blue!6, minimum width=4.8cm, minimum height=0.95cm, align=center},
+  arr/.style={-Latex, thick}
+]
+\node[stage] (s1) {第 3 章基线实现\\先保证概念正确};
+\node[stage, below=of s1] (s2) {减少 Python 层拆分\\合并 QKV 投影};
+\node[stage, below=of s2] (s3) {改写张量表达\\\code{view}/\code{transpose} 或 \code{einsum}};
+\node[stage, below=of s3] (s4) {调用 PyTorch fused kernel\\\code{scaled\_dot\_product\_attention}};
+\node[stage, below=of s4] (s5) {进一步交给更底层后端\\FlashAttention / FlexAttention};
+
+\draw[arr] (s1) -- (s2);
+\draw[arr] (s2) -- (s3);
+\draw[arr] (s3) -- (s4);
+\draw[arr] (s4) -- (s5);
+\end{tikzpicture}
+\end{center}
+
+阅读时如果觉得类很多、名字很像，就记住这条线：
+\textbf{同一个 causal MHA 数学对象，在实现层面经历的是 ``少做 Python 拆分''
+\(\rightarrow\) ``更好地配合底层 kernel'' \(\rightarrow\) ``把注意力计算交给框架优化器''。}
+
+\section{统一问题设定}
+
+notebook 一开始固定了一组对比配置：
+
+\begin{itemize}
+  \item batch size \(=8\)；
+  \item context length \(=1024\)；
+  \item embedding dimension \(=768\)；
+  \item 头数 \(=12\)；
+  \item dropout 在 benchmark 中设为 \(0\)；
+  \item 注意力类型统一是 decoder-style 的 causal self-attention。
+\end{itemize}
+
+因此，这个 bonus 不是在比较不同模型结构，而是在比较
+\textbf{同一个 MHA 计算图被不同 API 和不同张量写法实现时的工程代价。}
+
+\subsection{所有实现都在做同一件事}
+
+无论你用哪一种写法，核心计算都没变：
+\[
+Q = XW_Q,\qquad K = XW_K,\qquad V = XW_V
+\]
+\[
+\operatorname{Attn}(Q,K,V)
+=
+\operatorname{softmax}\!\left(
+\frac{QK^\top}{\sqrt{d_{\text{head}}}} + M_{\text{causal}}
+\right)V
+\]
+
+差异主要来自三件事：
+
+\begin{enumerate}
+  \item Q、K、V 是分三次投影还是一次性投影；
+  \item 分头、转置、mask 和 softmax 是不是由你手工拼出来；
+  \item 最耗时的 attention kernel 是由 Python 拼接，还是直接交给 PyTorch fused operator。
+\end{enumerate}
+
+\section{实现一：第 3 章的 head wrapper 版}
+
+\subsection{它为什么最直观}
+
+第一种实现 \code{Ch03\_MHA\_Wrapper} 直接把每个头写成一个
+\code{CausalAttention}，再用 \code{ModuleList} 逐头调用后拼接：
+
+\begin{lstlisting}[style=py]
+context_vec = torch.cat([head(x) for head in self.heads], dim=-1)
+return self.out_proj(context_vec)
+\end{lstlisting}
+
+这版最适合教学，因为它保留了 ``一个 head 就是一套完整 causal attention''
+的直觉。你几乎可以肉眼看到：
+
+\begin{enumerate}
+  \item 每个 head 先各自做 \(Q,K,V\) 投影；
+  \item 每个 head 各自做 mask、softmax、加权求和；
+  \item 最后把多个 head 拼起来，再做输出投影。
+\end{enumerate}
+
+\subsection{它慢在哪里}
+
+不过这版也正是最不适合真实训练的写法，因为它在 Python 层做了太多重复工作：
+
+\begin{enumerate}
+  \item 每个 head 都有独立模块和独立前向调用；
+  \item 每个 head 各自触发一轮线性层和一轮注意力计算；
+  \item \code{torch.cat} 之前，所有头的结果都是分散管理的。
+\end{enumerate}
+
+所以它的价值主要是\textbf{教学清晰}，不是\textbf{运行高效}。
+
+\section{实现二：第 3 章的单模块 MHA}
+
+\subsection{这才是主章节真正的工程基线}
+
+\code{Ch03\_MHA} 把所有头放进一个模块里，先整体投影，再通过
+\code{view} 和 \code{transpose} 把最后一维拆成
+\code{num\_heads \(\times\) head\_dim}：
+
+\begin{lstlisting}[style=py]
+keys = keys.view(b, num_tokens, self.num_heads, self.head_dim)
+keys = keys.transpose(1, 2)
+\end{lstlisting}
+
+这里最关键的工程转变是：
+
+\begin{quote}
+multi-head attention 不是 ``很多小模块并联''，而是 ``一个大张量在多头维度上重排后统一计算''。
+\end{quote}
+
+\subsection{它比 wrapper 版好在哪}
+
+这版的优势主要有三点：
+
+\begin{enumerate}
+  \item 参数管理更集中，只有一套 \(W_Q,W_K,W_V\) 和一套输出投影；
+  \item 每个 head 的计算都被并进了批量张量运算；
+  \item 更接近后续 fused kernel 能吃下去的数据布局。
+\end{enumerate}
+
+如果你正在学 attention，\code{Ch03\_MHA} 是最值得吃透的一版。
+因为从它往后，几乎所有优化都只是 ``不改数学定义，只改落地方式''。
+
+\section{实现三：合并 QKV 投影}
+
+\subsection{为什么这一步很自然}
+
+notebook 的第三种实现把三套线性层合成一套：
+
+\begin{lstlisting}[style=py]
+self.qkv = nn.Linear(d_in, 3 * d_out, bias=qkv_bias)
+\end{lstlisting}
+
+然后再 reshape 成
+\((b, n, 3, h, d_{\text{head}})\)，最后拆出 queries、keys、values。
+
+这一步的直觉非常简单：
+
+\begin{quote}
+既然输入 \(X\) 一样，只是输出被分成 Q、K、V 三块，那就没有必要让 Python 连续调用三次独立线性层。
+\end{quote}
+
+\subsection{它解决了什么}
+
+合并 QKV 的主要收益不是改变复杂度阶数，而是减少实现常数项：
+
+\begin{enumerate}
+  \item 更少的模块调用开销；
+  \item 更连续的内存访问；
+  \item 更符合现代 Transformer 库的常见参数布局；
+  \item 后续更容易接到 fused attention kernel。
+\end{enumerate}
+
+\subsection{理解时要注意的点}
+
+这里不要把 ``合并 QKV'' 理解成 ``数学上少做了一步''。
+真正发生的是：
+
+\[
+XW_Q,\; XW_K,\; XW_V
+\quad\Longrightarrow\quad
+X[W_Q\; W_K\; W_V]
+\]
+
+也就是说，它只是把三次线性变换拼成了一次更大的线性变换，
+本质仍然是同一套投影。
+
+\section{实现四：\texorpdfstring{\code{einsum}}{einsum} 版 MHA}
+
+\subsection{它在教学上有什么价值}
+
+\code{MHAEinsum} 用 \code{torch.einsum} 把线性变换和注意力打分写成显式的指标求和：
+
+\begin{lstlisting}[style=py]
+Q = torch.einsum("bnd,do->bno", x, self.W_query)
+scores = torch.einsum("bhnd,bhmd->bhnm", Q, K)
+\end{lstlisting}
+
+这版的好处是表达非常直接。你可以一眼看到：
+
+\begin{enumerate}
+  \item 哪个维度是 batch；
+  \item 哪个维度是 token；
+  \item 哪个维度是 head；
+  \item 哪个维度在做缩并。
+\end{enumerate}
+
+所以它很适合做\textbf{张量维度教学}和\textbf{实现正确性对照}。
+
+\subsection{但它不一定是性能赢家}
+
+\code{einsum} 的问题不在于它错，而在于它未必总能落到最优 kernel。
+在很多场景下，PyTorch 能把它优化得不错，但它通常没有
+\code{scaled\_dot\_product\_attention} 那样明确地走到专门的注意力后端。
+
+\subsection{为什么仓库专门给它写测试}
+
+配套测试文件 \filepath{ch03/02\_bonus\_efficient-multihead-attention/tests/test\_mha\_implementations.py}
+专门检查了 \code{MHAEinsum} 和 \code{Ch03\_MHA} 在拷贝权重后的输出是否一致：
+
+\begin{lstlisting}[style=py]
+assert torch.allclose(out_linear, out_einsum, atol=1e-5)
+\end{lstlisting}
+
+这说明仓库作者也把它当作一种 ``表达形式不同、数学对象相同'' 的实现，
+而不是另一种 attention 机制。
+
+\section{实现五：PyTorch 的 SDPA 与 FlashAttention 路线}
+
+\subsection{为什么这是现代实现的分水岭}
+
+从这一步开始，重点已经不再是 ``你能不能自己写出 attention''，
+而是 ``你能不能把数据排布成 PyTorch fused kernel 喜欢的样子''。
+
+\code{MHAPyTorchScaledDotProduct} 调用的是：
+
+\begin{lstlisting}[style=py]
+nn.functional.scaled_dot_product_attention(
+    queries, keys, values,
+    attn_mask=None,
+    dropout_p=use_dropout,
+    is_causal=True
+)
+\end{lstlisting}
+
+这行代码的重要性非常高，因为它可能触发 PyTorch 背后的高性能实现，
+包括 memory-efficient attention 或 FlashAttention 风格后端。
+
+\subsection{为什么它往往更快}
+
+原因不是 ``库函数更高级''，而是它给了底层足够多的信息：
+
+\begin{enumerate}
+  \item 这是标准的 scaled dot-product attention；
+  \item 这是 causal 场景；
+  \item mask 可以不显式物化成大矩阵；
+  \item softmax、mask、乘法、归约可以由 fused kernel 一起做。
+\end{enumerate}
+
+这通常会带来两类收益：
+
+\begin{enumerate}
+  \item 更少的中间张量读写；
+  \item 更低的显存带宽压力。
+\end{enumerate}
+
+\subsection{这里最值得记住的一点}
+
+如果你只是想在现代 PyTorch 里写一个实用版 causal MHA，
+\textbf{优先考虑 SDPA 路线，而不是自己手工写
+\code{attn\_scores}、\code{masked\_fill}、\code{softmax}。}
+
+\section{实现六：显式 mask 的 SDPA}
+
+\subsection{为什么它还要单独比较}
+
+\code{MHAPyTorchSDPAWithoutFlash} 仍然调用 SDPA，
+但传入了显式的 causal mask，同时把 \code{is\_causal=False}：
+
+\begin{lstlisting}[style=py]
+context_vec = nn.functional.scaled_dot_product_attention(
+    queries, keys, values,
+    attn_mask=attn_mask,
+    dropout_p=use_dropout,
+    is_causal=False
+)
+\end{lstlisting}
+
+这样做的意义在于把两个问题拆开：
+
+\begin{enumerate}
+  \item ``我是否使用 SDPA 这个 API''；
+  \item ``我是否让后端知道这是一个标准 causal 模式''。
+\end{enumerate}
+
+\subsection{它揭示的工程事实}
+
+同一个 API，在你是否显式传 mask、是否直接声明 \code{is\_causal=True}
+的情况下，底层可用优化路径可能不同。
+
+这正是 notebook 想强调的一点：
+
+\begin{quote}
+高性能实现不只是 ``用了哪个函数''，还取决于你是否以最容易被框架识别和融合的方式使用它。
+\end{quote}
+
+\section{实现七与实现八：\texorpdfstring{\code{nn.MultiheadAttention}}{nn.MultiheadAttention}}
+
+\subsection{为什么默认版不一定快}
+
+notebook 又比较了两种 PyTorch 官方类封装：
+
+\begin{enumerate}
+  \item 默认的 \code{nn.MultiheadAttention}；
+  \item 把 \code{need\_weights=False} 的版本。
+\end{enumerate}
+
+这两个版本最值得学习的不是 API 本身，而是一个工程细节：
+
+\begin{quote}
+如果你要求返回 attention weights，框架可能不能走最优的 SDPA 路线。
+\end{quote}
+
+所以 notebook 专门强调：
+
+\begin{lstlisting}[style=py]
+need_weights=False
+\end{lstlisting}
+
+\subsection{这个细节为什么重要}
+
+很多训练和推理场景根本不需要把 attention map 返回给上层。
+如果你只是想拿最终输出，而不是做可视化或解释性分析，
+那么保留 \code{need\_weights=True} 往往只是平白限制了后端优化空间。
+
+因此，\textbf{官方类并不等于自动最优}；
+你仍然要理解哪些参数会让它退回更慢的路径。
+
+\section{实现九：FlexAttention}
+
+\subsection{它想解决的是什么问题}
+
+FlashAttention 很快，但它支持的 mask 和模式往往更固定。
+FlexAttention 的目标是：
+
+\begin{quote}
+尽量保留 PyTorch 级别的灵活性，同时提供接近 FlashAttention 的性能。
+\end{quote}
+
+notebook 里用 \code{create\_block\_mask} 和一个 \code{causal} 谓词来构造 block mask，
+再交给 \code{flex\_attention}：
+
+\begin{lstlisting}[style=py]
+attn_mask = create_block_mask(
+    causal, B=None, H=None,
+    Q_LEN=num_tokens, KV_LEN=num_tokens,
+    device=x.device
+)
+context_vec = flex_attention(queries, keys, values, block_mask=attn_mask)
+\end{lstlisting}
+
+\subsection{它的现实限制}
+
+notebook 也明确写了两个重要前提：
+
+\begin{enumerate}
+  \item 需要 PyTorch 2.5 或更新版本；
+  \item 当前主要支持 CUDA，且代码里提到 dropout 仍有限制。
+\end{enumerate}
+
+另外，它还保留了一段被注释掉的旧写法，解释为什么现在要在 forward 中重新创建 mask：
+某些新版本下，\code{BlockMask} 已不支持旧的切片方式。
+
+这提醒你一个很实际的问题：
+\textbf{越靠近新内核和新特性，版本兼容性成本往往越高。}
+
+\section{把 9 种实现放到一张图里}
+
+\begin{center}
+\begin{longtable}{p{3.0cm} p{4.1cm} p{4.3cm} p{2.8cm}}
+\toprule
+实现 & 核心思路 & 主要优点 & 主要代价 \\
+\midrule
+Chapter 3 wrapper & 每个 head 一个模块 & 教学最直观 & Python 开销大 \\
+Chapter 3 MHA & 单模块统一分头 & 易懂且已较实用 & 仍手工写 attention 流程 \\
+Combined QKV & QKV 合并投影 & 更少线性层调用 & 代码可读性略降 \\
+\code{einsum} & 显式指标缩并 & 维度语义清楚 & 未必落到最优 kernel \\
+SDPA + causal flag & 直接调 fused API & 现代 PyTorch 常用优选 & 需要理解后端约束 \\
+SDPA + explicit mask & 仍用 SDPA，但显式传 mask & 方便对照 mask 影响 & 可能错过最快路径 \\
+\code{nn.MultiheadAttention} 默认 & 官方封装最省事 & API 稳定 & 默认不一定最快 \\
+\code{nn.MultiheadAttention} + \code{need\_weights=False} & 让官方类更接近 SDPA 最优路径 & 常常更高效 & 不再返回注意力权重 \\
+FlexAttention & 更灵活的高性能 mask 机制 & 适合更复杂模式扩展 & 版本和平台要求更高 \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\section{怎么读 benchmark 结果}
+
+README 给出了三张总结图，分别比较：
+
+\begin{enumerate}
+  \item 仅 forward；
+  \item forward + backward；
+  \item forward + backward + \code{torch.compile}。
+\end{enumerate}
+
+理解这些结果时，不要只盯着 ``谁是第一名''，而是要抓三层结论。
+
+\subsection{结论一：教学友好的写法通常不是最快}
+
+wrapper 版和手工展开版更容易学，但在大序列长度下，
+Python 层拆分、显式 mask、中间张量读写都会形成明显开销。
+
+\subsection{结论二：一旦进入 fused attention 路线，性能会明显改善}
+
+只要实现方式能够让 PyTorch 识别出标准 SDPA 结构，
+就更有机会使用优化后的 kernel。这也是为什么现代框架越来越不鼓励手写
+\code{masked\_fill} + \code{softmax} + \code{@ values} 的原因。
+
+\subsection{结论三：benchmark 不是永久真理}
+
+这一点尤其重要。notebook 结果依赖于：
+
+\begin{enumerate}
+  \item 具体硬件，是 M3 还是 A100；
+  \item 具体 PyTorch 版本；
+  \item 是否启用 \code{torch.compile}；
+  \item batch、序列长度、头数和 dropout 配置；
+  \item 是否处于训练模式。
+\end{enumerate}
+
+所以正确的态度不是背结论，而是学会\textbf{如何设计一个公平 benchmark}。
+
+\section{为什么 notebook 还比较 forward/backward 和 compile}
+
+\subsection{只看 forward 很容易误导}
+
+推理场景当然关心 forward，但训练真正消耗时间的通常是
+forward + backward。某些实现前向快，不代表反向也快。
+
+\subsection{\code{torch.compile} 会改变排名}
+
+\code{torch.compile} 的价值在于让 PyTorch 有机会进一步融合图和优化执行。
+但不是所有实现都能从中得到同样收益。
+
+因此 notebook 把
+\textbf{裸跑} 和 \textbf{compile 后} 分开比较，是很合理的设计。
+这也提醒你：\textbf{工程上的最快实现，常常是 ``实现写法'' 和
+``编译/运行时配置'' 共同作用的结果。}
+
+\section{如果你自己要实现，该怎么选}
+
+\subsection{场景一：你在学 attention}
+
+先看 \code{Ch03\_MHA\_Wrapper} 和 \code{Ch03\_MHA}。
+前者帮你保留 ``每个 head 各算各的'' 的直觉，
+后者帮你理解真正的张量分头视角。
+
+\subsection{场景二：你要写一个可维护的教学型项目}
+
+优先选 \code{Ch03\_MHA} 或 combined QKV 版。
+它们在可读性和工程合理性之间比较平衡。
+
+\subsection{场景三：你要做实际训练或推理}
+
+优先考虑 SDPA 路线，必要时再评估 \code{nn.MultiheadAttention}
+是否能满足你的封装需求。只要不需要返回 attention weights，
+就尽量避免让框架多做无用工作。
+
+\subsection{场景四：你要支持更复杂注意力模式}
+
+这时可以关注 FlexAttention，因为它的优势不是 ``基础 causal attention 更简单''，
+而是 ``复杂 mask / block 规则下还有机会保持高性能''。
+
+\section{这一份 bonus 最该学会什么}
+
+如果只留三句话，我建议记住下面三句：
+
+\begin{enumerate}
+  \item multi-head attention 的数学定义基本不变，真正变化的是张量布局和 kernel 调用方式；
+  \item 现代 PyTorch 里，标准 causal attention 优先走 SDPA 路线，而不是手工拼原语；
+  \item benchmark 结论只有放回硬件、版本、训练模式和编译配置里看，才有意义。
+\end{enumerate}
+
+\section{下一步可以继续看什么}
+
+如果你已经读完这份 bonus，下一步建议是：
+
+\begin{enumerate}
+  \item 回到第 3 章主教程，对照理解 ``概念正确'' 和 ``实现高效'' 的差别；
+  \item 自己把 \code{Ch03\_MHA} 改写成 combined QKV 或 SDPA 版；
+  \item 用你自己的 GPU 和 PyTorch 版本重跑 benchmark，而不是直接复用 notebook 结论；
+  \item 如果之后要接 KV cache、paged attention 或 block-sparse attention，
+  再继续沿着 ``更接近底层 kernel'' 的方向深入。
+\end{enumerate}
+
+\end{document}

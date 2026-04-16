@@ -1,0 +1,587 @@
+\documentclass[12pt,a4paper]{ctexart}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{array,booktabs,longtable}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc,fit,positioning}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\lstdefinestyle{py}{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{ForestGreen!70!black},
+  stringstyle=\color{BrickRed},
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black!20},
+  backgroundcolor=\color{black!2}
+}
+
+\newcommand{\filepath}[1]{\texttt{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+
+\title{第 3 章注意力机制学习教程\\\large 基于 \filepath{ch03/01\_main-chapter-code/ch03.ipynb}}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+\bigskip
+
+\section{这份教程解决什么问题}
+
+原始 notebook \filepath{ch03/01\_main-chapter-code/ch03.ipynb} 的目标不是把你变成
+``会背 attention 公式的人''，而是把你带到一个更实用的位置：
+
+\begin{quote}
+你能从零解释 self-attention，能把它写成 PyTorch 模块，能看懂 causal mask，
+也能理解为什么 GPT 里的注意力最后会变成 multi-head attention。
+\end{quote}
+
+这份中文教程不逐段翻译原文，而是按学习路径重新组织：
+
+\begin{enumerate}
+  \item 为什么需要 attention；
+  \item 最小版 self-attention 到底怎么算；
+  \item 为什么真实模型要引入 \(W_q\)、\(W_k\)、\(W_v\)；
+  \item 为什么语言模型必须加 causal mask；
+  \item multi-head attention 究竟比单头多了什么；
+  \item 学完这一章后，下一步能做什么输出。
+\end{enumerate}
+
+\section{先看全局主线}
+
+这一章的核心不是很多零散知识点，而是一条连续主线：
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=1.1cm,
+  stage/.style={draw, rounded corners, fill=blue!6, minimum width=4.2cm, minimum height=0.9cm, align=center},
+  arr/.style={-Latex, thick}
+]
+\node[stage] (s1) {长序列建模困难};
+\node[stage, below=of s1] (s2) {先做无参数的 self-attention\\建立直觉};
+\node[stage, below=of s2] (s3) {引入 \(W_q, W_k, W_v\)\\得到可训练注意力};
+\node[stage, below=of s3] (s4) {加入 causal mask 和 dropout\\变成语言模型可用版本};
+\node[stage, below=of s4] (s5) {把单头扩展成 multi-head\\接入后续 GPT};
+
+\draw[arr] (s1) -- (s2);
+\draw[arr] (s2) -- (s3);
+\draw[arr] (s3) -- (s4);
+\draw[arr] (s4) -- (s5);
+\end{tikzpicture}
+\end{center}
+
+如果你在阅读时丢了方向，就回到上面这条链：这一章一直在回答
+``为什么这样设计 attention 模块''，而不只是教你把几行 PyTorch 代码敲出来。
+
+\section{为什么长序列建模会逼出 attention}
+
+\subsection{问题的本质}
+
+在早期序列模型里，常见做法是把整句信息压进一个固定大小的隐状态，再靠这个隐状态继续生成输出。
+这会遇到两个实际问题：
+
+\begin{enumerate}
+  \item 输入一长，前面信息容易被后面过程稀释；
+  \item 不同输出位置需要依赖输入中的不同部分，但固定向量很难对这种选择性依赖建模。
+\end{enumerate}
+
+attention 的想法更直接：
+
+\begin{quote}
+当前 token 需要什么信息，就去全序列里按相关性取，而不是指望一个固定摘要把所有信息都无损保存。
+\end{quote}
+
+\subsection{学习时应抓住的转变}
+
+从这里开始，你要把自己从``压缩整句''的思维切到``按需检索上下文''的思维。
+后面的所有公式，本质上都只是在实现下面这句话：
+
+\begin{quote}
+给定当前位置，计算它和其他位置的相关性，再用这些相关性对其他位置的信息加权求和。
+\end{quote}
+
+\section{第一步：无可训练参数的 self-attention}
+
+\subsection{这一步的作用}
+
+原 notebook 先故意讲一个\textbf{不真实但很适合建立直觉}的版本：
+直接拿输入向量自己和自己做点积，不引入任何可学习参数。
+
+这样做的好处是，你可以先理解 attention 的计算链，而不被模型参数分散注意力。
+
+\subsection{示例输入}
+
+notebook 用一句非常短的 toy sentence 做例子：
+
+\begin{center}
+\texttt{Your journey starts with one step}
+\end{center}
+
+每个 token 先被表示成一个 3 维向量。示例矩阵如下：
+
+\begin{center}
+\begin{tabular}{c c c}
+\toprule
+token & 记号 & toy embedding \\
+\midrule
+Your & \(x^{(1)}\) & \([0.43, 0.15, 0.89]\) \\
+journey & \(x^{(2)}\) & \([0.55, 0.87, 0.66]\) \\
+starts & \(x^{(3)}\) & \([0.57, 0.85, 0.64]\) \\
+with & \(x^{(4)}\) & \([0.22, 0.58, 0.33]\) \\
+one & \(x^{(5)}\) & \([0.77, 0.25, 0.10]\) \\
+step & \(x^{(6)}\) & \([0.05, 0.80, 0.55]\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{三步计算链}
+
+假设我们现在只关心第二个 token \(x^{(2)}\)。
+这一节的目标是计算它的上下文向量 \(z^{(2)}\)。
+
+\begin{enumerate}
+  \item 用 \(x^{(2)}\) 作为查询，与所有输入向量做点积，得到 attention scores；
+  \item 对 scores 做 softmax，得到总和为 1 的 attention weights；
+  \item 用 attention weights 对所有输入向量做加权求和，得到 context vector。
+\end{enumerate}
+
+\begin{center}
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, minimum width=2.1cm, minimum height=0.9cm, align=center},
+  small/.style={draw, rounded corners, minimum width=1.2cm, minimum height=0.7cm, align=center, fill=blue!5},
+  arr/.style={-Latex, thick}
+]
+\node[box, fill=yellow!15] (query) at (0, 0) {查询\\\(x^{(2)}\)};
+\node[small] (x1) at (-2.8, -1.8) {\(x^{(1)}\)};
+\node[small, fill=yellow!15] (x2) at (-1.6, -1.8) {\(x^{(2)}\)};
+\node[small] (x3) at (-0.4, -1.8) {\(x^{(3)}\)};
+\node[small] (x4) at (0.8, -1.8) {\(x^{(4)}\)};
+\node[small] (x5) at (2.0, -1.8) {\(x^{(5)}\)};
+\node[small] (x6) at (3.2, -1.8) {\(x^{(6)}\)};
+
+\node[box, fill=green!10] (score) at (0, -3.5) {点积\\scores};
+\node[box, fill=orange!12] (softmax) at (0, -5.0) {softmax\\weights};
+\node[box, fill=red!8] (ctx) at (0, -6.6) {加权求和\\\(z^{(2)}\)};
+
+\draw[arr] (query) -- (score);
+\foreach \n in {x1,x2,x3,x4,x5,x6} {
+  \draw[arr] (\n) -- (score);
+}
+\draw[arr] (score) -- (softmax);
+\draw[arr] (softmax) -- (ctx);
+\foreach \n in {x1,x2,x3,x4,x5,x6} {
+  \draw[arr] (\n) |- (ctx);
+}
+\end{tikzpicture}
+\end{center}
+
+\subsection{这一步真正要学会的东西}
+
+这一节最重要的不是背住符号，而是把下面三件事说清楚：
+
+\begin{enumerate}
+  \item \textbf{attention score} 是相关性的粗分数，还没有归一化；
+  \item \textbf{attention weight} 是 softmax 后的权重，总和为 1；
+  \item \textbf{context vector} 不是复制原 token，而是融合了其他 token 信息的新表示。
+\end{enumerate}
+
+也就是说，attention 的输出不是``把 query 挑出来''，而是
+``围绕 query 重新组织一遍整个上下文''。
+
+\subsection{为什么原 notebook 单独讲 naive softmax}
+
+notebook 先写一个最朴素的 softmax：
+
+\begin{lstlisting}[style=py]
+def softmax_naive(x):
+    return torch.exp(x) / torch.exp(x).sum(dim=0)
+\end{lstlisting}
+
+然后再切回 \code{torch.softmax}。这不是废话，而是在提醒你：
+
+\begin{enumerate}
+  \item softmax 本质上只是把分数转成概率型权重；
+  \item 真实实现里，数值稳定性和库实现细节非常重要。
+\end{enumerate}
+
+\section{第二步：把 attention 推广到整句}
+
+前一节只算了一个 \(z^{(2)}\)。但语言模型不会只更新一个位置，它要同时为每个 token 计算上下文向量。
+
+这时就从``一个 query 对全体 key''，自然推广到``每个位置都做一次 query''。
+原 notebook 做了一个很重要的思维跳转：
+
+\begin{quote}
+原本看起来像双层循环的计算，其实可以整体改写成矩阵乘法。
+\end{quote}
+
+于是：
+\[
+\text{attn\_scores} = X X^\top, \qquad
+\text{attn\_weights} = \operatorname{softmax}(\text{attn\_scores}), \qquad
+Z = \text{attn\_weights} X
+\]
+
+学习时你要特别注意这一点，因为后面所有高效实现都依赖这个视角：
+attention 看起来是在两两比较 token，真正落地时则是\textbf{张量批量运算}。
+
+\section{第三步：引入可训练的 Q、K、V 投影}
+
+\subsection{为什么前面的版本不够}
+
+如果直接用输入向量自己互相点积，模型其实没有学会``应该用什么标准来判断相关性''。
+它只是把现成 embedding 空间里的几何关系拿来用。
+
+真实模型需要更强的表达能力，于是引入三组可训练参数：
+\[
+q^{(i)} = x^{(i)} W_q, \qquad
+k^{(i)} = x^{(i)} W_k, \qquad
+v^{(i)} = x^{(i)} W_v
+\]
+
+\subsection{这三个量各自干什么}
+
+\begin{enumerate}
+  \item Query：当前这个位置正在\textbf{找什么}；
+  \item Key：每个位置手里拿着一张\textbf{可被匹配的标签}；
+  \item Value：真正会被聚合到输出里的\textbf{信息载体}。
+\end{enumerate}
+
+一个常见误区是把它们当成三份随机复制品。
+更准确的理解是：
+
+\begin{quote}
+同一个输入 \(x\) 被投影进了三种不同职责的空间：
+匹配空间（query/key）和传递信息空间（value）。
+\end{quote}
+
+\subsection{为什么要除以根号 d\_k}
+
+notebook 在这里引入 scaled dot-product attention：
+\[
+\operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V
+\]
+
+要点不是记住这个形式，而是理解原因：
+
+\begin{enumerate}
+  \item 维度大时，点积数值会变大；
+  \item 直接送进 softmax 容易让分布过尖；
+  \item 过尖会让梯度不稳定，训练效果变差；
+  \item 所以用 \(\sqrt{d_k}\) 做尺度校正。
+\end{enumerate}
+
+\subsection{原 notebook 里的两个类}
+
+\filepath{ch03.ipynb} 先写 \code{SelfAttention\_v1}，再写 \code{SelfAttention\_v2}。
+它们的核心逻辑一致，差别主要在实现风格：
+
+\begin{enumerate}
+  \item \code{SelfAttention\_v1} 直接用 \code{nn.Parameter} 自己管理权重矩阵；
+  \item \code{SelfAttention\_v2} 改用 \code{nn.Linear}，更接近真实工程写法。
+\end{enumerate}
+
+其中 \code{SelfAttention\_v2} 的核心非常短：
+
+\begin{lstlisting}[style=py]
+class SelfAttention_v2(nn.Module):
+    def __init__(self, d_in, d_out, qkv_bias=False):
+        super().__init__()
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key   = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+
+    def forward(self, x):
+        keys = self.W_key(x)
+        queries = self.W_query(x)
+        values = self.W_value(x)
+
+        attn_scores = queries @ keys.T
+        attn_weights = torch.softmax(
+            attn_scores / keys.shape[-1]**0.5, dim=-1
+        )
+        context_vec = attn_weights @ values
+        return context_vec
+\end{lstlisting}
+
+学习时应该盯住 \code{forward}，不是盯住类名。
+如果你能解释这一段每一行在干什么，这一节就算学到了点子上。
+
+\section{第四步：为什么语言模型必须使用 causal attention}
+
+\subsection{问题出在哪里}
+
+前面的 self-attention 默认一个 token 可以看到全序列所有位置。
+这对编码任务通常没问题，但对自回归语言模型是致命的：
+
+\begin{quote}
+如果当前位置在训练时看到了未来 token，模型就等于作弊。
+\end{quote}
+
+因此，语言模型里的注意力必须满足：
+
+\begin{center}
+位置 \(t\) 只能看见 \(1\) 到 \(t\) 的 token，不能看见 \(t+1\) 之后的 token。
+\end{center}
+
+\subsection{mask 的几何形状}
+
+这就是为什么会出现一个上三角 mask。下面的示意图里，绿色区域表示允许关注，
+红色区域表示未来位置，必须屏蔽：
+
+\begin{center}
+\begin{tikzpicture}[scale=0.9]
+\foreach \r in {0,1,2,3,4} {
+  \foreach \c in {0,1,2,3,4} {
+    \pgfmathtruncatemacro{\isfuture}{\c>\r ? 1 : 0}
+    \ifnum\isfuture=1
+      \fill[red!20] (\c,-\r) rectangle ++(1,-1);
+    \else
+      \fill[green!14] (\c,-\r) rectangle ++(1,-1);
+    \fi
+    \draw[black!40] (\c,-\r) rectangle ++(1,-1);
+  }
+}
+\node at (2.5,0.7) {列：被看的位置};
+\node[rotate=90] at (-0.7,-2.5) {行：当前 query 位置};
+\node[anchor=west] at (5.4,-1.2) {\color{green!50!black}\rule{0.8cm}{0.25cm} 可见};
+\node[anchor=west] at (5.4,-2.0) {\color{red!60!black}\rule{0.8cm}{0.25cm} 屏蔽未来};
+\end{tikzpicture}
+\end{center}
+
+\subsection{为什么要在 softmax 前屏蔽}
+
+原 notebook 先演示了一个直观但不够优雅的方案：
+先 softmax，再把未来位置乘零，然后重新归一化。
+
+紧接着它说明了更标准的做法：
+
+\begin{quote}
+在 softmax 前，把未来位置的 score 直接填成 \(-\infty\)。
+\end{quote}
+
+这样 softmax 后这些位置自然变成 0，而且每一行仍然保持合法概率分布。
+
+\subsection{dropout 在这里扮演什么角色}
+
+dropout 不是 causal mask 的替代品，它解决的是另一个问题：训练时的过拟合。
+notebook 选择在 attention weights 上施加 dropout，这是常见做法。
+
+你可以把这一步理解成：
+
+\begin{quote}
+模型在训练时不要过度依赖某几个固定连接，而要学会更稳健地分配注意力。
+\end{quote}
+
+\subsection{批处理版本的意义}
+
+到 \code{CausalAttention} 这一类时，notebook 不再只处理单句，而是把输入 shape 扩成
+\((b, \text{num\_tokens}, d)\)。
+
+这一点非常关键，因为它标志着代码开始从``教学算例''进入``可接入真实训练循环''的阶段。
+
+\section{第五步：从单头到 multi-head attention}
+
+\subsection{为什么不能只用一个头}
+
+单头 attention 的问题不在于它不能用，而在于它太容易把所有关系都压进一个注意力模式里。
+multi-head 的核心好处是：
+
+\begin{quote}
+让模型在多个子空间里并行地学习不同类型的依赖关系。
+\end{quote}
+
+比如一个头偏向局部语法，一个头偏向长距离依赖，另一个头偏向指代或结构信息。
+
+\subsection{直观结构图}
+
+\begin{center}
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, minimum width=2.0cm, minimum height=0.9cm, align=center},
+  arr/.style={-Latex, thick}
+]
+\node[box, fill=blue!8] (x) at (0,0) {输入 \(X\)};
+\node[box, fill=green!10] (qkv) at (0,-1.5) {线性投影\\得到 \(Q,K,V\)};
+\node[box, fill=orange!12] (split) at (0,-3.1) {按 head 切分};
+
+\node[box, fill=yellow!15] (h1) at (-3.3,-4.8) {Head 1\\attention};
+\node[box, fill=yellow!15] (h2) at (0,-4.8) {Head 2\\attention};
+\node[box, fill=yellow!15] (h3) at (3.3,-4.8) {Head \(h\)\\attention};
+
+\node[box, fill=red!10] (concat) at (0,-6.5) {拼接 heads};
+\node[box, fill=purple!10] (proj) at (0,-8.0) {输出投影};
+
+\draw[arr] (x) -- (qkv);
+\draw[arr] (qkv) -- (split);
+\draw[arr] (split) -- (h1);
+\draw[arr] (split) -- (h2);
+\draw[arr] (split) -- (h3);
+\draw[arr] (h1) -- (concat);
+\draw[arr] (h2) -- (concat);
+\draw[arr] (h3) -- (concat);
+\draw[arr] (concat) -- (proj);
+\end{tikzpicture}
+\end{center}
+
+\subsection{两种实现思路}
+
+原 notebook 先给了 \code{MultiHeadAttentionWrapper}，它的想法很直观：
+直接堆多个单头 \code{CausalAttention}。
+
+然后才给更标准的 \code{MultiHeadAttention}：
+
+\begin{enumerate}
+  \item 先一次性投影到 \(d_{\text{out}}\)；
+  \item 再 reshape 成 \((b, \text{num\_tokens}, \text{num\_heads}, \text{head\_dim})\)；
+  \item 再 transpose 到 \((b, \text{num\_heads}, \text{num\_tokens}, \text{head\_dim})\)；
+  \item 每个 head 独立算 attention；
+  \item 拼回去，再做输出投影。
+\end{enumerate}
+
+\subsection{这部分真正难的不是公式，而是 shape}
+
+很多人第一次学 multi-head attention 觉得抽象，不是因为公式难，而是因为张量 shape 一直在变。
+所以学习这一节时，最有价值的训练是把每一步 shape 写出来。
+
+例如 notebook 里的核心流向是：
+\[
+\begin{aligned}
+X &: (b, n, d_{\text{in}}) \\
+Q, K, V &: (b, n, d_{\text{out}}) \\
+\text{reshape 后} &: (b, n, h, d_h) \\
+\text{transpose 后} &: (b, h, n, d_h) \\
+\text{scores} &: (b, h, n, n) \\
+\text{context} &: (b, h, n, d_h) \\
+\text{拼回输出} &: (b, n, d_{\text{out}})
+\end{aligned}
+\]
+
+只要你把这组 shape 走顺了，multi-head attention 就不会再神秘。
+
+\section{第六步：如何把这一章学成可输出的能力}
+
+\subsection{学完后最应该做的三种输出}
+
+\paragraph{输出一：口头解释}
+你应该能不用看 notebook，独立解释下面这些问题：
+
+\begin{enumerate}
+  \item attention score 和 attention weight 有什么区别；
+  \item 为什么要有 \(Q\)、\(K\)、\(V\) 三组投影；
+  \item 为什么要用 \(\sqrt{d_k}\) 缩放；
+  \item causal mask 为什么必须在 softmax 前介入；
+  \item multi-head 相比单头到底多了什么表达能力。
+\end{enumerate}
+
+\paragraph{输出二：最小实现}
+你应该能在空白文件里手写一个最小版注意力模块：
+
+\begin{lstlisting}[style=py]
+class TinyAttention(nn.Module):
+    def __init__(self, d_in, d_out):
+        super().__init__()
+        self.Wq = nn.Linear(d_in, d_out, bias=False)
+        self.Wk = nn.Linear(d_in, d_out, bias=False)
+        self.Wv = nn.Linear(d_in, d_out, bias=False)
+
+    def forward(self, x):
+        q = self.Wq(x)
+        k = self.Wk(x)
+        v = self.Wv(x)
+        scores = q @ k.transpose(-2, -1)
+        weights = torch.softmax(scores / k.shape[-1]**0.5, dim=-1)
+        return weights @ v
+\end{lstlisting}
+
+\paragraph{输出三：接入后续 GPT}
+这一章的 \code{MultiHeadAttention} 不是孤立玩具。
+在仓库后续章节里，它会进入 GPT 模型主体，例如：
+
+\begin{enumerate}
+  \item \filepath{ch04/01\_main-chapter-code/gpt.py}
+  \item 多个 \filepath{previous\_chapters.py} 文件
+\end{enumerate}
+
+也就是说，这一章学完以后，你已经具备了理解 GPT block 中注意力子模块的基础。
+
+\section{建议的学习节奏}
+
+\subsection{第一遍：只抓主线}
+
+第一遍读 \filepath{ch03.ipynb} 时，只做一件事：
+把整章分成五个阶段记住。
+
+\begin{enumerate}
+  \item 无参数 self-attention；
+  \item 矩阵化推广；
+  \item 可训练 \(Q/K/V\)；
+  \item causal mask + dropout；
+  \item multi-head attention。
+\end{enumerate}
+
+\subsection{第二遍：盯 shape 和 forward}
+
+第二遍不要再看大段说明，直接盯几个关键实现：
+
+\begin{enumerate}
+  \item \code{SelfAttention\_v2}
+  \item \code{CausalAttention}
+  \item \code{MultiHeadAttention}
+\end{enumerate}
+
+你的目标不是再看懂一次，而是把每个 \code{forward} 里的张量流向写在纸上。
+
+\subsection{第三遍：做一个小闭环}
+
+建议你做这三个动作：
+
+\begin{enumerate}
+  \item 自己手写最小 attention；
+  \item 打印每一步 shape；
+  \item 去看第 4 章的 GPT 实现，确认 attention 模块是怎么嵌进去的。
+\end{enumerate}
+
+\section{本章最短总结}
+
+如果把 \filepath{ch03.ipynb} 压成几句话，它讲的其实就是：
+
+\begin{quote}
+attention 的本质是：先比较相关性，再按相关性取信息。\\
+self-attention 让每个 token 都能看全局。\\
+引入 \(Q/K/V\) 后，这种比较和取信息的方式变成了可学习的。\\
+加入 causal mask 后，attention 才能用于自回归语言模型。\\
+加入 multi-head 后，模型能在多个子空间中并行学习不同关系。\\
+最后，这个模块会直接进入后续 GPT 的实现。
+\end{quote}
+
+\bigskip
+\noindent
+\textbf{建议的下一步：}
+读完本教程后，回到原 notebook，重点看下面三个实现：
+
+\begin{enumerate}
+  \item \code{SelfAttention\_v2}
+  \item \code{CausalAttention}
+  \item \code{MultiHeadAttention}
+\end{enumerate}
+
+然后自己写一个最小版实现。这样你学到的就不再只是概念，而是可以输出的能力。
+
+\end{document}
