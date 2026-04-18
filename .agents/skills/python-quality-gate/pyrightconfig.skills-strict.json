@@ -1,0 +1,12 @@
+{
+  "include": [
+    "scripts/python_gate.py",
+    "../python-frontend-dev/scripts/ui_quality_gate.py",
+    "../python-frontend-dev/scripts/ui_simulation.py"
+  ],
+  "typeCheckingMode": "strict",
+  "pythonVersion": "3.12",
+  "extraPaths": [
+    "../../.."
+  ]
+}

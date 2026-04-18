@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Low-Pong Attention Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Low-Pong Attention Viewer</p>
+          <h1>Model vs Expert, step by step</h1>
+          <p class="subtitle">
+            Replay the exact same seed under the learned policy and the expert policy, inspect attention, and see where the paddle decisions diverge.
+          </p>
+        </div>
+        <div class="hero-metrics" id="heroMetrics"></div>
+      </header>
+
+      <section class="control-bar">
+        <label>
+          Episode
+          <select id="episodeSelect"></select>
+        </label>
+        <label>
+          Timestep
+          <input id="stepSlider" type="range" min="0" max="0" value="0" />
+        </label>
+        <div class="button-row">
+          <button id="prevBtn">Prev</button>
+          <button id="playBtn">Play</button>
+          <button id="nextBtn">Next</button>
+        </div>
+      </section>
+
+      <section class="compare-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Model Policy</h2>
+            <span id="modelOutcome" class="pill"></span>
+          </div>
+          <canvas id="modelBoard" width="420" height="540"></canvas>
+          <div id="modelInfo" class="info-grid"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Expert Policy</h2>
+            <span id="expertOutcome" class="pill"></span>
+          </div>
+          <canvas id="expertBoard" width="420" height="540"></canvas>
+          <div id="expertInfo" class="info-grid"></div>
+        </article>
+      </section>
+
+      <section class="detail-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Attention</h2>
+            <span id="attentionNote" class="muted"></span>
+          </div>
+          <canvas id="attentionCanvas" width="920" height="260"></canvas>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Recent History</h2>
+          </div>
+          <div id="historyCards" class="history-cards"></div>
+        </article>
+      </section>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

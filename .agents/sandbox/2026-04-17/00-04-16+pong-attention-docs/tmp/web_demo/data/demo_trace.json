@@ -1,0 +1,2205 @@
+{
+  "metadata": {
+    "title": "Low-Pong Attention Demo",
+    "checkpoint_path": ".agents/sandbox/2026-04-17_00-04-16+pong-attention-docs/tmp/round1_run/attention_policy.pt",
+    "model_loaded": true,
+    "window_size": 3,
+    "d_model": 48,
+    "num_heads": 2,
+    "num_layers": 2,
+    "env": {
+      "width": 6,
+      "height": 9
+    },
+    "metrics": {
+      "action_accuracy": 0.984375,
+      "intercept_mse": 29.383534812927245,
+      "attn_last_two_mass": 0.4828485704889317,
+      "rollout_catch_rate": 0.921875,
+      "one_frame_baseline_accuracy": 0.015625
+    }
+  },
+  "episodes": [
+    {
+      "seed": 7,
+      "model": {
+        "policy": "model",
+        "seed": 7,
+        "caught": true,
+        "num_steps": 6,
+        "steps": [
+          {
+            "step_index": 0,
+            "phase": "warmup",
+            "state_before": {
+              "x_ball": 6,
+              "y_ball": 0,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 0
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 0,
+                "y_paddle": 6,
+                "t": 0
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": null,
+            "expert_action_name": null,
+            "expert_intercept": null,
+            "model_action": null,
+            "model_action_name": null,
+            "model_intercept_pred": null,
+            "attn_weights": [],
+            "per_head_weights": [],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 5,
+              "y_ball": 1,
+              "y_paddle": 6,
+              "t": 1
+            }
+          },
+          {
+            "step_index": 1,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 5,
+              "y_ball": 1,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 1
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 0,
+                "y_paddle": 6,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 1,
+                "y_paddle": 6,
+                "t": 1
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.10681160539388657,
+            "attn_weights": [
+              0.0,
+              1.0
+            ],
+            "per_head_weights": [
+              [
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 4,
+              "y_ball": 2,
+              "y_paddle": 6,
+              "t": 2
+            }
+          },
+          {
+            "step_index": 2,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 4,
+              "y_ball": 2,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 2
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 0,
+                "y_paddle": 6,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 1,
+                "y_paddle": 6,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 2,
+                "y_paddle": 6,
+                "t": 2
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.16912738978862762,
+            "attn_weights": [
+              0.8906967639923096,
+              0.10219825804233551,
+              0.007104932330548763
+            ],
+            "per_head_weights": [
+              [
+                0.9190444946289062,
+                0.07842235267162323,
+                0.0025330716744065285
+              ],
+              [
+                0.8623490929603577,
+                0.1259741634130478,
+                0.011676792986690998
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 3,
+              "y_ball": 3,
+              "y_paddle": 6,
+              "t": 3
+            }
+          },
+          {
+            "step_index": 3,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 3,
+              "y_ball": 3,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 3
+            },
+            "history": [
+              {
+                "x_ball": 5,
+                "y_ball": 1,
+                "y_paddle": 6,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 2,
+                "y_paddle": 6,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 3,
+                "y_paddle": 6,
+                "t": 3
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.13472847640514374,
+            "attn_weights": [
+              0.9458843469619751,
+              0.04935538023710251,
+              0.004760251380503178
+            ],
+            "per_head_weights": [
+              [
+                0.9737721681594849,
+                0.025517538189888,
+                0.0007102943491190672
+              ],
+              [
+                0.9179965853691101,
+                0.07319322228431702,
+                0.008810208179056644
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 2,
+              "y_ball": 4,
+              "y_paddle": 6,
+              "t": 4
+            }
+          },
+          {
+            "step_index": 4,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 2,
+              "y_ball": 4,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 4
+            },
+            "history": [
+              {
+                "x_ball": 4,
+                "y_ball": 2,
+                "y_paddle": 6,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 3,
+                "y_paddle": 6,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 4
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.13454066216945648,
+            "attn_weights": [
+              0.9260653257369995,
+              0.05532784387469292,
+              0.01860680989921093
+            ],
+            "per_head_weights": [
+              [
+                0.9790316820144653,
+                0.01929221861064434,
+                0.0016760689904913306
+              ],
+              [
+                0.8730989098548889,
+                0.09136346727609634,
+                0.03553755208849907
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 1,
+              "y_ball": 5,
+              "y_paddle": 6,
+              "t": 5
+            }
+          },
+          {
+            "step_index": 5,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 1,
+              "y_ball": 5,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 5
+            },
+            "history": [
+              {
+                "x_ball": 3,
+                "y_ball": 3,
+                "y_paddle": 6,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 4
+              },
+              {
+                "x_ball": 1,
+                "y_ball": 5,
+                "y_paddle": 6,
+                "t": 5
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.151925191283226,
+            "attn_weights": [
+              0.7300061583518982,
+              0.1276198774576187,
+              0.1423739790916443
+            ],
+            "per_head_weights": [
+              [
+                0.9242338538169861,
+                0.058751754462718964,
+                0.017014387995004654
+              ],
+              [
+                0.5357784628868103,
+                0.19648799300193787,
+                0.2677335739135742
+              ]
+            ],
+            "reward": 1.0,
+            "done": true,
+            "caught": true,
+            "state_after": {
+              "x_ball": 0,
+              "y_ball": 6,
+              "y_paddle": 6,
+              "t": 6
+            }
+          }
+        ]
+      },
+      "expert": {
+        "policy": "expert",
+        "seed": 7,
+        "caught": true,
+        "num_steps": 6,
+        "steps": [
+          {
+            "step_index": 0,
+            "phase": "warmup",
+            "state_before": {
+              "x_ball": 6,
+              "y_ball": 0,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 0
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 0,
+                "y_paddle": 6,
+                "t": 0
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": null,
+            "expert_action_name": null,
+            "expert_intercept": null,
+            "model_action": null,
+            "model_action_name": null,
+            "model_intercept_pred": null,
+            "attn_weights": [],
+            "per_head_weights": [],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 5,
+              "y_ball": 1,
+              "y_paddle": 6,
+              "t": 1
+            }
+          },
+          {
+            "step_index": 1,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 5,
+              "y_ball": 1,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 1
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 0,
+                "y_paddle": 6,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 1,
+                "y_paddle": 6,
+                "t": 1
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.10681160539388657,
+            "attn_weights": [
+              0.0,
+              1.0
+            ],
+            "per_head_weights": [
+              [
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 4,
+              "y_ball": 2,
+              "y_paddle": 6,
+              "t": 2
+            }
+          },
+          {
+            "step_index": 2,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 4,
+              "y_ball": 2,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 2
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 0,
+                "y_paddle": 6,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 1,
+                "y_paddle": 6,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 2,
+                "y_paddle": 6,
+                "t": 2
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.16912738978862762,
+            "attn_weights": [
+              0.8906967639923096,
+              0.10219825804233551,
+              0.007104932330548763
+            ],
+            "per_head_weights": [
+              [
+                0.9190444946289062,
+                0.07842235267162323,
+                0.0025330716744065285
+              ],
+              [
+                0.8623490929603577,
+                0.1259741634130478,
+                0.011676792986690998
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 3,
+              "y_ball": 3,
+              "y_paddle": 6,
+              "t": 3
+            }
+          },
+          {
+            "step_index": 3,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 3,
+              "y_ball": 3,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 3
+            },
+            "history": [
+              {
+                "x_ball": 5,
+                "y_ball": 1,
+                "y_paddle": 6,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 2,
+                "y_paddle": 6,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 3,
+                "y_paddle": 6,
+                "t": 3
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.13472847640514374,
+            "attn_weights": [
+              0.9458843469619751,
+              0.04935538023710251,
+              0.004760251380503178
+            ],
+            "per_head_weights": [
+              [
+                0.9737721681594849,
+                0.025517538189888,
+                0.0007102943491190672
+              ],
+              [
+                0.9179965853691101,
+                0.07319322228431702,
+                0.008810208179056644
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 2,
+              "y_ball": 4,
+              "y_paddle": 6,
+              "t": 4
+            }
+          },
+          {
+            "step_index": 4,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 2,
+              "y_ball": 4,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 4
+            },
+            "history": [
+              {
+                "x_ball": 4,
+                "y_ball": 2,
+                "y_paddle": 6,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 3,
+                "y_paddle": 6,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 4
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.13454066216945648,
+            "attn_weights": [
+              0.9260653257369995,
+              0.05532784387469292,
+              0.01860680989921093
+            ],
+            "per_head_weights": [
+              [
+                0.9790316820144653,
+                0.01929221861064434,
+                0.0016760689904913306
+              ],
+              [
+                0.8730989098548889,
+                0.09136346727609634,
+                0.03553755208849907
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 1,
+              "y_ball": 5,
+              "y_paddle": 6,
+              "t": 5
+            }
+          },
+          {
+            "step_index": 5,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 1,
+              "y_ball": 5,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 5
+            },
+            "history": [
+              {
+                "x_ball": 3,
+                "y_ball": 3,
+                "y_paddle": 6,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 4
+              },
+              {
+                "x_ball": 1,
+                "y_ball": 5,
+                "y_paddle": 6,
+                "t": 5
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 6,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.151925191283226,
+            "attn_weights": [
+              0.7300061583518982,
+              0.1276198774576187,
+              0.1423739790916443
+            ],
+            "per_head_weights": [
+              [
+                0.9242338538169861,
+                0.058751754462718964,
+                0.017014387995004654
+              ],
+              [
+                0.5357784628868103,
+                0.19648799300193787,
+                0.2677335739135742
+              ]
+            ],
+            "reward": 1.0,
+            "done": true,
+            "caught": true,
+            "state_after": {
+              "x_ball": 0,
+              "y_ball": 6,
+              "y_paddle": 6,
+              "t": 6
+            }
+          }
+        ]
+      }
+    },
+    {
+      "seed": 8,
+      "model": {
+        "policy": "model",
+        "seed": 8,
+        "caught": true,
+        "num_steps": 6,
+        "steps": [
+          {
+            "step_index": 0,
+            "phase": "warmup",
+            "state_before": {
+              "x_ball": 6,
+              "y_ball": 7,
+              "v_ball": -1,
+              "y_paddle": 6,
+              "t": 0
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 7,
+                "y_paddle": 6,
+                "t": 0
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": null,
+            "expert_action_name": null,
+            "expert_intercept": null,
+            "model_action": null,
+            "model_action_name": null,
+            "model_intercept_pred": null,
+            "attn_weights": [],
+            "per_head_weights": [],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 5,
+              "y_ball": 6,
+              "y_paddle": 5,
+              "t": 1
+            }
+          },
+          {
+            "step_index": 1,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 5,
+              "y_ball": 6,
+              "v_ball": -1,
+              "y_paddle": 5,
+              "t": 1
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 7,
+                "y_paddle": 6,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 6,
+                "y_paddle": 5,
+                "t": 1
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": -1,
+            "expert_action_name": "up",
+            "expert_intercept": 1,
+            "model_action": -1,
+            "model_action_name": "up",
+            "model_intercept_pred": -0.0645909383893013,
+            "attn_weights": [
+              0.0,
+              1.0
+            ],
+            "per_head_weights": [
+              [
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 4,
+              "y_ball": 5,
+              "y_paddle": 4,
+              "t": 2
+            }
+          },
+          {
+            "step_index": 2,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 4,
+              "y_ball": 5,
+              "v_ball": -1,
+              "y_paddle": 4,
+              "t": 2
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 7,
+                "y_paddle": 6,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 6,
+                "y_paddle": 5,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 5,
+                "y_paddle": 4,
+                "t": 2
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": -1,
+            "expert_action_name": "up",
+            "expert_intercept": 1,
+            "model_action": -1,
+            "model_action_name": "up",
+            "model_intercept_pred": -0.032262079417705536,
+            "attn_weights": [
+              0.6850917339324951,
+              0.24074675142765045,
+              0.0741615891456604
+            ],
+            "per_head_weights": [
+              [
+                0.7179573178291321,
+                0.21251091361045837,
+                0.06953181326389313
+              ],
+              [
+                0.6522260904312134,
+                0.26898258924484253,
+                0.07879136502742767
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 3,
+              "y_ball": 4,
+              "y_paddle": 3,
+              "t": 3
+            }
+          },
+          {
+            "step_index": 3,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 3,
+              "y_ball": 4,
+              "v_ball": -1,
+              "y_paddle": 3,
+              "t": 3
+            },
+            "history": [
+              {
+                "x_ball": 5,
+                "y_ball": 6,
+                "y_paddle": 5,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 5,
+                "y_paddle": 4,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 4,
+                "y_paddle": 3,
+                "t": 3
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": -1,
+            "expert_action_name": "up",
+            "expert_intercept": 1,
+            "model_action": -1,
+            "model_action_name": "up",
+            "model_intercept_pred": 0.02151849865913391,
+            "attn_weights": [
+              0.7679140567779541,
+              0.18570664525032043,
+              0.046379365026950836
+            ],
+            "per_head_weights": [
+              [
+                0.783003032207489,
+                0.17479053139686584,
+                0.042206503450870514
+              ],
+              [
+                0.7528250217437744,
+                0.19662274420261383,
+                0.05055223032832146
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 2,
+              "y_ball": 3,
+              "y_paddle": 2,
+              "t": 4
+            }
+          },
+          {
+            "step_index": 4,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 2,
+              "y_ball": 3,
+              "v_ball": -1,
+              "y_paddle": 2,
+              "t": 4
+            },
+            "history": [
+              {
+                "x_ball": 4,
+                "y_ball": 5,
+                "y_paddle": 4,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 4,
+                "y_paddle": 3,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 3,
+                "y_paddle": 2,
+                "t": 4
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": -1,
+            "expert_action_name": "up",
+            "expert_intercept": 1,
+            "model_action": -1,
+            "model_action_name": "up",
+            "model_intercept_pred": 0.18197733163833618,
+            "attn_weights": [
+              0.710776150226593,
+              0.17554977536201477,
+              0.1136741042137146
+            ],
+            "per_head_weights": [
+              [
+                0.8498327136039734,
+                0.121402807533741,
+                0.02876448445022106
+              ],
+              [
+                0.5717195868492126,
+                0.22969673573970795,
+                0.198583722114563
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 1,
+              "y_ball": 2,
+              "y_paddle": 1,
+              "t": 5
+            }
+          },
+          {
+            "step_index": 5,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 1,
+              "y_ball": 2,
+              "v_ball": -1,
+              "y_paddle": 1,
+              "t": 5
+            },
+            "history": [
+              {
+                "x_ball": 3,
+                "y_ball": 4,
+                "y_paddle": 3,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 3,
+                "y_paddle": 2,
+                "t": 4
+              },
+              {
+                "x_ball": 1,
+                "y_ball": 2,
+                "y_paddle": 1,
+                "t": 5
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 1,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": 0.07616080343723297,
+            "attn_weights": [
+              0.32595354318618774,
+              0.28016823530197144,
+              0.3938782215118408
+            ],
+            "per_head_weights": [
+              [
+                0.33498433232307434,
+                0.2330225557088852,
+                0.4319930970668793
+              ],
+              [
+                0.31692272424697876,
+                0.32731392979621887,
+                0.35576331615448
+              ]
+            ],
+            "reward": 1.0,
+            "done": true,
+            "caught": true,
+            "state_after": {
+              "x_ball": 0,
+              "y_ball": 1,
+              "y_paddle": 1,
+              "t": 6
+            }
+          }
+        ]
+      },
+      "expert": {
+        "policy": "expert",
+        "seed": 8,
+        "caught": true,
+        "num_steps": 6,
+        "steps": [
+          {
+            "step_index": 0,
+            "phase": "warmup",
+            "state_before": {
+              "x_ball": 6,
+              "y_ball": 7,
+              "v_ball": -1,
+              "y_paddle": 6,
+              "t": 0
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 7,
+                "y_paddle": 6,
+                "t": 0
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": null,
+            "expert_action_name": null,
+            "expert_intercept": null,
+            "model_action": null,
+            "model_action_name": null,
+            "model_intercept_pred": null,
+            "attn_weights": [],
+            "per_head_weights": [],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 5,
+              "y_ball": 6,
+              "y_paddle": 5,
+              "t": 1
+            }
+          },
+          {
+            "step_index": 1,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 5,
+              "y_ball": 6,
+              "v_ball": -1,
+              "y_paddle": 5,
+              "t": 1
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 7,
+                "y_paddle": 6,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 6,
+                "y_paddle": 5,
+                "t": 1
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": -1,
+            "expert_action_name": "up",
+            "expert_intercept": 1,
+            "model_action": -1,
+            "model_action_name": "up",
+            "model_intercept_pred": -0.0645909383893013,
+            "attn_weights": [
+              0.0,
+              1.0
+            ],
+            "per_head_weights": [
+              [
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 4,
+              "y_ball": 5,
+              "y_paddle": 4,
+              "t": 2
+            }
+          },
+          {
+            "step_index": 2,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 4,
+              "y_ball": 5,
+              "v_ball": -1,
+              "y_paddle": 4,
+              "t": 2
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 7,
+                "y_paddle": 6,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 6,
+                "y_paddle": 5,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 5,
+                "y_paddle": 4,
+                "t": 2
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": -1,
+            "expert_action_name": "up",
+            "expert_intercept": 1,
+            "model_action": -1,
+            "model_action_name": "up",
+            "model_intercept_pred": -0.032262079417705536,
+            "attn_weights": [
+              0.6850917339324951,
+              0.24074675142765045,
+              0.0741615891456604
+            ],
+            "per_head_weights": [
+              [
+                0.7179573178291321,
+                0.21251091361045837,
+                0.06953181326389313
+              ],
+              [
+                0.6522260904312134,
+                0.26898258924484253,
+                0.07879136502742767
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 3,
+              "y_ball": 4,
+              "y_paddle": 3,
+              "t": 3
+            }
+          },
+          {
+            "step_index": 3,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 3,
+              "y_ball": 4,
+              "v_ball": -1,
+              "y_paddle": 3,
+              "t": 3
+            },
+            "history": [
+              {
+                "x_ball": 5,
+                "y_ball": 6,
+                "y_paddle": 5,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 5,
+                "y_paddle": 4,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 4,
+                "y_paddle": 3,
+                "t": 3
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": -1,
+            "expert_action_name": "up",
+            "expert_intercept": 1,
+            "model_action": -1,
+            "model_action_name": "up",
+            "model_intercept_pred": 0.02151849865913391,
+            "attn_weights": [
+              0.7679140567779541,
+              0.18570664525032043,
+              0.046379365026950836
+            ],
+            "per_head_weights": [
+              [
+                0.783003032207489,
+                0.17479053139686584,
+                0.042206503450870514
+              ],
+              [
+                0.7528250217437744,
+                0.19662274420261383,
+                0.05055223032832146
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 2,
+              "y_ball": 3,
+              "y_paddle": 2,
+              "t": 4
+            }
+          },
+          {
+            "step_index": 4,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 2,
+              "y_ball": 3,
+              "v_ball": -1,
+              "y_paddle": 2,
+              "t": 4
+            },
+            "history": [
+              {
+                "x_ball": 4,
+                "y_ball": 5,
+                "y_paddle": 4,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 4,
+                "y_paddle": 3,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 3,
+                "y_paddle": 2,
+                "t": 4
+              }
+            ],
+            "chosen_action": -1,
+            "chosen_action_name": "up",
+            "expert_action": -1,
+            "expert_action_name": "up",
+            "expert_intercept": 1,
+            "model_action": -1,
+            "model_action_name": "up",
+            "model_intercept_pred": 0.18197733163833618,
+            "attn_weights": [
+              0.710776150226593,
+              0.17554977536201477,
+              0.1136741042137146
+            ],
+            "per_head_weights": [
+              [
+                0.8498327136039734,
+                0.121402807533741,
+                0.02876448445022106
+              ],
+              [
+                0.5717195868492126,
+                0.22969673573970795,
+                0.198583722114563
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 1,
+              "y_ball": 2,
+              "y_paddle": 1,
+              "t": 5
+            }
+          },
+          {
+            "step_index": 5,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 1,
+              "y_ball": 2,
+              "v_ball": -1,
+              "y_paddle": 1,
+              "t": 5
+            },
+            "history": [
+              {
+                "x_ball": 3,
+                "y_ball": 4,
+                "y_paddle": 3,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 3,
+                "y_paddle": 2,
+                "t": 4
+              },
+              {
+                "x_ball": 1,
+                "y_ball": 2,
+                "y_paddle": 1,
+                "t": 5
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 1,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": 0.07616080343723297,
+            "attn_weights": [
+              0.32595354318618774,
+              0.28016823530197144,
+              0.3938782215118408
+            ],
+            "per_head_weights": [
+              [
+                0.33498433232307434,
+                0.2330225557088852,
+                0.4319930970668793
+              ],
+              [
+                0.31692272424697876,
+                0.32731392979621887,
+                0.35576331615448
+              ]
+            ],
+            "reward": 1.0,
+            "done": true,
+            "caught": true,
+            "state_after": {
+              "x_ball": 0,
+              "y_ball": 1,
+              "y_paddle": 1,
+              "t": 6
+            }
+          }
+        ]
+      }
+    },
+    {
+      "seed": 9,
+      "model": {
+        "policy": "model",
+        "seed": 9,
+        "caught": true,
+        "num_steps": 6,
+        "steps": [
+          {
+            "step_index": 0,
+            "phase": "warmup",
+            "state_before": {
+              "x_ball": 6,
+              "y_ball": 2,
+              "v_ball": 1,
+              "y_paddle": 4,
+              "t": 0
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 2,
+                "y_paddle": 4,
+                "t": 0
+              }
+            ],
+            "chosen_action": 1,
+            "chosen_action_name": "down",
+            "expert_action": null,
+            "expert_action_name": null,
+            "expert_intercept": null,
+            "model_action": null,
+            "model_action_name": null,
+            "model_intercept_pred": null,
+            "attn_weights": [],
+            "per_head_weights": [],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 5,
+              "y_ball": 3,
+              "y_paddle": 5,
+              "t": 1
+            }
+          },
+          {
+            "step_index": 1,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 5,
+              "y_ball": 3,
+              "v_ball": 1,
+              "y_paddle": 5,
+              "t": 1
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 2,
+                "y_paddle": 4,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 3,
+                "y_paddle": 5,
+                "t": 1
+              }
+            ],
+            "chosen_action": 1,
+            "chosen_action_name": "down",
+            "expert_action": 1,
+            "expert_action_name": "down",
+            "expert_intercept": 8,
+            "model_action": 1,
+            "model_action_name": "down",
+            "model_intercept_pred": -0.3284500539302826,
+            "attn_weights": [
+              0.0,
+              1.0
+            ],
+            "per_head_weights": [
+              [
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 4,
+              "y_ball": 4,
+              "y_paddle": 6,
+              "t": 2
+            }
+          },
+          {
+            "step_index": 2,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 4,
+              "y_ball": 4,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 2
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 2,
+                "y_paddle": 4,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 3,
+                "y_paddle": 5,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 2
+              }
+            ],
+            "chosen_action": 1,
+            "chosen_action_name": "down",
+            "expert_action": 1,
+            "expert_action_name": "down",
+            "expert_intercept": 8,
+            "model_action": 1,
+            "model_action_name": "down",
+            "model_intercept_pred": -0.24638153612613678,
+            "attn_weights": [
+              0.9907315969467163,
+              0.009266397915780544,
+              1.9669325865834253e-06
+            ],
+            "per_head_weights": [
+              [
+                0.9960708618164062,
+                0.00392896169796586,
+                1.3644977059357188e-07
+              ],
+              [
+                0.9853923916816711,
+                0.014603834599256516,
+                3.7974152746755863e-06
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 3,
+              "y_ball": 5,
+              "y_paddle": 7,
+              "t": 3
+            }
+          },
+          {
+            "step_index": 3,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 3,
+              "y_ball": 5,
+              "v_ball": 1,
+              "y_paddle": 7,
+              "t": 3
+            },
+            "history": [
+              {
+                "x_ball": 5,
+                "y_ball": 3,
+                "y_paddle": 5,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 5,
+                "y_paddle": 7,
+                "t": 3
+              }
+            ],
+            "chosen_action": 1,
+            "chosen_action_name": "down",
+            "expert_action": 1,
+            "expert_action_name": "down",
+            "expert_intercept": 8,
+            "model_action": 1,
+            "model_action_name": "down",
+            "model_intercept_pred": -0.22589215636253357,
+            "attn_weights": [
+              0.9998475313186646,
+              0.00015099794836714864,
+              1.4565581523129367e-06
+            ],
+            "per_head_weights": [
+              [
+                0.9999338388442993,
+                6.595595186809078e-05,
+                1.8233831156067026e-07
+              ],
+              [
+                0.999761164188385,
+                0.00023603993759024888,
+                2.7307780783303315e-06
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 2,
+              "y_ball": 6,
+              "y_paddle": 8,
+              "t": 4
+            }
+          },
+          {
+            "step_index": 4,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 2,
+              "y_ball": 6,
+              "v_ball": 1,
+              "y_paddle": 8,
+              "t": 4
+            },
+            "history": [
+              {
+                "x_ball": 4,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 5,
+                "y_paddle": 7,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 6,
+                "y_paddle": 8,
+                "t": 4
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 8,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.181642085313797,
+            "attn_weights": [
+              0.9901880025863647,
+              0.007273635361343622,
+              0.002538408152759075
+            ],
+            "per_head_weights": [
+              [
+                0.9964702129364014,
+                0.003037351416423917,
+                0.0004925401299260557
+              ],
+              [
+                0.9839057326316833,
+                0.011509919539093971,
+                0.004584276117384434
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 1,
+              "y_ball": 7,
+              "y_paddle": 8,
+              "t": 5
+            }
+          },
+          {
+            "step_index": 5,
+            "phase": "model",
+            "state_before": {
+              "x_ball": 1,
+              "y_ball": 7,
+              "v_ball": 1,
+              "y_paddle": 8,
+              "t": 5
+            },
+            "history": [
+              {
+                "x_ball": 3,
+                "y_ball": 5,
+                "y_paddle": 7,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 6,
+                "y_paddle": 8,
+                "t": 4
+              },
+              {
+                "x_ball": 1,
+                "y_ball": 7,
+                "y_paddle": 8,
+                "t": 5
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 8,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.26374489068984985,
+            "attn_weights": [
+              0.6761884689331055,
+              0.1614227592945099,
+              0.16238878667354584
+            ],
+            "per_head_weights": [
+              [
+                0.8515090942382812,
+                0.10972827672958374,
+                0.03876258060336113
+              ],
+              [
+                0.5008677840232849,
+                0.21311722695827484,
+                0.28601500391960144
+              ]
+            ],
+            "reward": 1.0,
+            "done": true,
+            "caught": true,
+            "state_after": {
+              "x_ball": 0,
+              "y_ball": 8,
+              "y_paddle": 8,
+              "t": 6
+            }
+          }
+        ]
+      },
+      "expert": {
+        "policy": "expert",
+        "seed": 9,
+        "caught": true,
+        "num_steps": 6,
+        "steps": [
+          {
+            "step_index": 0,
+            "phase": "warmup",
+            "state_before": {
+              "x_ball": 6,
+              "y_ball": 2,
+              "v_ball": 1,
+              "y_paddle": 4,
+              "t": 0
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 2,
+                "y_paddle": 4,
+                "t": 0
+              }
+            ],
+            "chosen_action": 1,
+            "chosen_action_name": "down",
+            "expert_action": null,
+            "expert_action_name": null,
+            "expert_intercept": null,
+            "model_action": null,
+            "model_action_name": null,
+            "model_intercept_pred": null,
+            "attn_weights": [],
+            "per_head_weights": [],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 5,
+              "y_ball": 3,
+              "y_paddle": 5,
+              "t": 1
+            }
+          },
+          {
+            "step_index": 1,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 5,
+              "y_ball": 3,
+              "v_ball": 1,
+              "y_paddle": 5,
+              "t": 1
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 2,
+                "y_paddle": 4,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 3,
+                "y_paddle": 5,
+                "t": 1
+              }
+            ],
+            "chosen_action": 1,
+            "chosen_action_name": "down",
+            "expert_action": 1,
+            "expert_action_name": "down",
+            "expert_intercept": 8,
+            "model_action": 1,
+            "model_action_name": "down",
+            "model_intercept_pred": -0.3284500539302826,
+            "attn_weights": [
+              0.0,
+              1.0
+            ],
+            "per_head_weights": [
+              [
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 4,
+              "y_ball": 4,
+              "y_paddle": 6,
+              "t": 2
+            }
+          },
+          {
+            "step_index": 2,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 4,
+              "y_ball": 4,
+              "v_ball": 1,
+              "y_paddle": 6,
+              "t": 2
+            },
+            "history": [
+              {
+                "x_ball": 6,
+                "y_ball": 2,
+                "y_paddle": 4,
+                "t": 0
+              },
+              {
+                "x_ball": 5,
+                "y_ball": 3,
+                "y_paddle": 5,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 2
+              }
+            ],
+            "chosen_action": 1,
+            "chosen_action_name": "down",
+            "expert_action": 1,
+            "expert_action_name": "down",
+            "expert_intercept": 8,
+            "model_action": 1,
+            "model_action_name": "down",
+            "model_intercept_pred": -0.24638153612613678,
+            "attn_weights": [
+              0.9907315969467163,
+              0.009266397915780544,
+              1.9669325865834253e-06
+            ],
+            "per_head_weights": [
+              [
+                0.9960708618164062,
+                0.00392896169796586,
+                1.3644977059357188e-07
+              ],
+              [
+                0.9853923916816711,
+                0.014603834599256516,
+                3.7974152746755863e-06
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 3,
+              "y_ball": 5,
+              "y_paddle": 7,
+              "t": 3
+            }
+          },
+          {
+            "step_index": 3,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 3,
+              "y_ball": 5,
+              "v_ball": 1,
+              "y_paddle": 7,
+              "t": 3
+            },
+            "history": [
+              {
+                "x_ball": 5,
+                "y_ball": 3,
+                "y_paddle": 5,
+                "t": 1
+              },
+              {
+                "x_ball": 4,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 5,
+                "y_paddle": 7,
+                "t": 3
+              }
+            ],
+            "chosen_action": 1,
+            "chosen_action_name": "down",
+            "expert_action": 1,
+            "expert_action_name": "down",
+            "expert_intercept": 8,
+            "model_action": 1,
+            "model_action_name": "down",
+            "model_intercept_pred": -0.22589215636253357,
+            "attn_weights": [
+              0.9998475313186646,
+              0.00015099794836714864,
+              1.4565581523129367e-06
+            ],
+            "per_head_weights": [
+              [
+                0.9999338388442993,
+                6.595595186809078e-05,
+                1.8233831156067026e-07
+              ],
+              [
+                0.999761164188385,
+                0.00023603993759024888,
+                2.7307780783303315e-06
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 2,
+              "y_ball": 6,
+              "y_paddle": 8,
+              "t": 4
+            }
+          },
+          {
+            "step_index": 4,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 2,
+              "y_ball": 6,
+              "v_ball": 1,
+              "y_paddle": 8,
+              "t": 4
+            },
+            "history": [
+              {
+                "x_ball": 4,
+                "y_ball": 4,
+                "y_paddle": 6,
+                "t": 2
+              },
+              {
+                "x_ball": 3,
+                "y_ball": 5,
+                "y_paddle": 7,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 6,
+                "y_paddle": 8,
+                "t": 4
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 8,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.181642085313797,
+            "attn_weights": [
+              0.9901880025863647,
+              0.007273635361343622,
+              0.002538408152759075
+            ],
+            "per_head_weights": [
+              [
+                0.9964702129364014,
+                0.003037351416423917,
+                0.0004925401299260557
+              ],
+              [
+                0.9839057326316833,
+                0.011509919539093971,
+                0.004584276117384434
+              ]
+            ],
+            "reward": 0.0,
+            "done": false,
+            "caught": false,
+            "state_after": {
+              "x_ball": 1,
+              "y_ball": 7,
+              "y_paddle": 8,
+              "t": 5
+            }
+          },
+          {
+            "step_index": 5,
+            "phase": "expert",
+            "state_before": {
+              "x_ball": 1,
+              "y_ball": 7,
+              "v_ball": 1,
+              "y_paddle": 8,
+              "t": 5
+            },
+            "history": [
+              {
+                "x_ball": 3,
+                "y_ball": 5,
+                "y_paddle": 7,
+                "t": 3
+              },
+              {
+                "x_ball": 2,
+                "y_ball": 6,
+                "y_paddle": 8,
+                "t": 4
+              },
+              {
+                "x_ball": 1,
+                "y_ball": 7,
+                "y_paddle": 8,
+                "t": 5
+              }
+            ],
+            "chosen_action": 0,
+            "chosen_action_name": "stay",
+            "expert_action": 0,
+            "expert_action_name": "stay",
+            "expert_intercept": 8,
+            "model_action": 0,
+            "model_action_name": "stay",
+            "model_intercept_pred": -0.26374489068984985,
+            "attn_weights": [
+              0.6761884689331055,
+              0.1614227592945099,
+              0.16238878667354584
+            ],
+            "per_head_weights": [
+              [
+                0.8515090942382812,
+                0.10972827672958374,
+                0.03876258060336113
+              ],
+              [
+                0.5008677840232849,
+                0.21311722695827484,
+                0.28601500391960144
+              ]
+            ],
+            "reward": 1.0,
+            "done": true,
+            "caught": true,
+            "state_after": {
+              "x_ball": 0,
+              "y_ball": 8,
+              "y_paddle": 8,
+              "t": 6
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
