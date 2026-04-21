@@ -1,0 +1,577 @@
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs,longtable,array}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{listings}
+\usepackage{upquote}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\setlist[itemize]{itemsep=0.25em, topsep=0.35em}
+\setlist[enumerate]{itemsep=0.25em, topsep=0.35em}
+\setlength{\emergencystretch}{3em}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=single,
+  framerule=0.3pt,
+  rulecolor=\color{black!25},
+  backgroundcolor=\color{black!2}
+}
+
+\tcbset{
+  commonbox/.style={
+    enhanced,
+    breakable,
+    boxrule=0.8pt,
+    arc=1.8mm,
+    left=1.4mm,
+    right=1.4mm,
+    top=1mm,
+    bottom=1mm
+  }
+}
+
+\newtcolorbox{problemblock}{
+  commonbox,
+  colframe=BrickRed!65!black,
+  colback=BrickRed!4,
+  title=这一部分在解决什么,
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{intuitionblock}{
+  commonbox,
+  colframe=RoyalBlue!70!black,
+  colback=RoyalBlue!4,
+  title=先抓直觉,
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{mathblock}{
+  commonbox,
+  colframe=Purple!65!black,
+  colback=Purple!4,
+  title=数学表达,
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{codeblock}{
+  commonbox,
+  colframe=ForestGreen!60!black,
+  colback=ForestGreen!4,
+  title=代码对应,
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{keypointblock}{
+  commonbox,
+  colframe=black!70,
+  colback=black!3,
+  title=这一节真正该记住什么,
+  fonttitle=\bfseries
+}
+
+\title{第 3 章注意力机制零基础问答讲义\\\large 基于 \path{ch03/01_main-chapter-code/ch03.ipynb} 重组}
+\author{}
+\date{2026-04-20}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{这份讲义到底在做什么}
+
+\begin{problemblock}
+原 notebook 的材料是按“图 + 解释 + 代码”铺开的。对于零基础读者，这样读很容易出现两个问题：第一，不知道自己现在最该问什么；第二，公式、代码、图之间对不上。这份讲义把它重组为一条问题链：先问为什么需要 attention，再问 self-attention 在算什么，再问为什么要有 Q、K、V、causal mask 和 multi-head，最后再回到代码。
+\end{problemblock}
+
+本讲义不追求逐段翻译 notebook。它只做一件更有用的事：把第 3 章整理成“零基础可以顺着提问学下去”的版本。
+
+\section{新的讲解原则}
+
+后面每个知识点都按四层推进：
+
+\begin{enumerate}
+  \item \textbf{背景问题}：它在解决什么现实困难。
+  \item \textbf{朴素直觉}：先不写公式，它到底在做什么。
+  \item \textbf{数学表达}：公式里每个量分别是什么。
+  \item \textbf{代码对应}：notebook 里哪一段代码在做这件事。
+\end{enumerate}
+
+这意味着：
+
+\begin{itemize}
+  \item 不等你逐图提问；
+  \item 不默认你已经懂 embedding、softmax、query、key、value；
+  \item 不把玩具数字和语义分开讲；
+  \item 不把极简版和真实模型混在一起。
+\end{itemize}
+
+\section{整章主线和新手最该问的问题}
+
+这一章的主线其实很短：
+
+\begin{center}
+\textbf{长序列难处理}
+$\rightarrow$
+\textbf{先学极简 self-attention}
+$\rightarrow$
+\textbf{引入 Q/K/V 变成可训练模块}
+$\rightarrow$
+\textbf{加 causal mask 变成语言模型可用版本}
+$\rightarrow$
+\textbf{扩展成 multi-head attention}
+\end{center}
+
+如果你现在是零基础，这一章最该问的不是“某张图是什么意思”，而是下面这五个问题：
+
+\begin{enumerate}
+  \item 为什么处理长序列会逼出 attention？
+  \item self-attention 说“一个词去看别的词”，到底在算什么？
+  \item 为什么真实模型不能直接用原始输入，而要先变成 Q、K、V？
+  \item 为什么 GPT 这类语言模型必须加 causal mask？
+  \item 为什么还要把单头 attention 扩展成 multi-head？
+\end{enumerate}
+
+\section{问题一：为什么会需要 attention}
+
+\begin{problemblock}
+在 attention 出现之前，机器翻译常用的是 RNN encoder-decoder。它的核心做法是：编码器先把整句输入压缩成一个 hidden state，再让解码器根据这个压缩表示逐词生成输出。问题是，句子一长，这个固定长度的压缩向量就容易丢信息。
+\end{problemblock}
+
+\begin{intuitionblock}
+可以把旧方法想成“先把整句话背成一张小抄，再开始翻译”。句子短时，小抄还够用；句子长时，细节会被挤掉。attention 的思路更像“翻译当前词时，允许你回头看原句里所有位置，但不是平均看，而是按相关性有选择地看”。
+\end{intuitionblock}
+
+\begin{mathblock}
+旧的 encoder-decoder 常把整句输入压成一个上下文向量 \(c\)：
+\[
+c = h_n .
+\]
+这里的 \(h_n\) 是编码器读完整个输入序列后得到的最后一个 hidden state。解码器再去建模：
+\[
+P(y_1,\ldots,y_m \mid x_1,\ldots,x_n)
+=
+\prod_{t=1}^{m} P(y_t \mid y_{<t}, c).
+\]
+这套写法的问题不在公式形式，而在于：\textbf{所有输入信息都被迫塞进同一个 \(c\) 里}。attention 的改动是，把“单个 \(c\)”换成“每一步动态算一个 \(c_t\)”。
+\end{mathblock}
+
+\begin{codeblock}
+notebook 这一部分主要是概念铺垫，对应前面的图示和文字单元，没有代码：
+\begin{itemize}
+  \item \texttt{Cell 8--16}：解释长序列翻译为什么需要跨位置依赖；
+  \item \texttt{Cell 15}：把话题从一般 attention 过渡到 Transformer 里的 self-attention。
+\end{itemize}
+\end{codeblock}
+
+\begin{keypointblock}
+attention 的动机不是“公式更复杂”，而是“不要再把整句死塞进一个固定向量里，而是在需要时回头看相关位置”。
+\end{keypointblock}
+
+\section{问题二：极简 self-attention 到底在算什么}
+
+\subsection{先说这一节的目标}
+
+\begin{problemblock}
+这一步先不引入可训练参数。目标只有一个：看懂 self-attention 的最小计算链。notebook 用一句很短的话 \texttt{Your journey starts with one step} 做演示，并把每个词先表示成一个 3 维向量。
+\end{problemblock}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+位置 & 词 & 3 维向量 \\
+\midrule
+\(x^{(1)}\) & Your & \([0.43, 0.15, 0.89]\) \\
+\(x^{(2)}\) & journey & \([0.55, 0.87, 0.66]\) \\
+\(x^{(3)}\) & starts & \([0.57, 0.85, 0.64]\) \\
+\(x^{(4)}\) & with & \([0.22, 0.58, 0.33]\) \\
+\(x^{(5)}\) & one & \([0.77, 0.25, 0.10]\) \\
+\(x^{(6)}\) & step & \([0.05, 0.80, 0.55]\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+这里的 \(x^{(i)}\) 表示“第 \(i\) 个词的输入向量”，不是幂。
+
+\subsection{新手会先问什么}
+
+\begin{enumerate}
+  \item “一个词看别的词”里的“看”，到底是怎么算的？
+  \item 为什么先用点积打分？
+  \item 为什么打完分还要 softmax？
+  \item 最后的上下文向量又是什么？
+\end{enumerate}
+
+\subsection{逐个回答}
+
+\begin{intuitionblock}
+先只盯第二个词 \(x^{(2)}\)，也就是 \texttt{journey}。我们想更新它的表示时，不只想保留它自己，还想把全句里和它有关的信息揉进来。最自然的做法是：
+\begin{enumerate}
+  \item 先让它和全句每个词都算一个相关性分数；
+  \item 再把这些分数变成“权重”；
+  \item 最后用这些权重对所有词向量做加权平均。
+\end{enumerate}
+\end{intuitionblock}
+
+\begin{mathblock}
+在极简版里，直接拿第二个词自己的向量当 query：
+\[
+q^{(2)} = x^{(2)}.
+\]
+然后算它和每个输入向量的点积，得到未归一化分数：
+\[
+\omega_{2j} = x^{(j)} \cdot q^{(2)}.
+\]
+这里的 \(\omega_{2j}\) 表示“当我们更新第 2 个词时，第 \(j\) 个词和它有多相关”。notebook 算出来的 6 个分数是
+\[
+[0.9544,\; 1.4950,\; 1.4754,\; 0.8434,\; 0.7070,\; 1.0865].
+\]
+
+再用 softmax 把分数变成和为 1 的权重：
+\[
+\alpha_{2j}
+=
+\frac{e^{\omega_{2j}}}{\sum_{k=1}^{6} e^{\omega_{2k}}}.
+\]
+这里的 \(\alpha_{2j}\) 才是真正的 attention weight。notebook 得到的是
+\[
+[0.1385,\; 0.2379,\; 0.2333,\; 0.1240,\; 0.1082,\; 0.1581].
+\]
+
+最后把所有输入向量按这些权重做加权求和：
+\[
+z^{(2)}
+=
+\sum_{j=1}^{6} \alpha_{2j} x^{(j)}.
+\]
+这里的 \(z^{(2)}\) 表示“第 2 个词的新上下文表示”。notebook 的结果是
+\[
+z^{(2)} = [0.4419,\; 0.6515,\; 0.5683].
+\]
+\end{mathblock}
+
+\subsection{为什么点积和 softmax 很自然}
+
+\begin{itemize}
+  \item 点积大，表示两个向量更对齐，也就更相关。
+  \item softmax 把任意实数分数变成非负、且总和为 1 的权重。
+  \item 加权求和让当前词既保留自己，也吸收别的相关词的信息。
+\end{itemize}
+
+\begin{codeblock}
+这部分可以直接对照以下 code cell：
+\begin{itemize}
+  \item \texttt{Cell 24}：定义 6 个词的 toy embedding；
+  \item \texttt{Cell 28}：算第二个词对全句的原始分数；
+  \item \texttt{Cell 37}：用 \texttt{torch.softmax} 变成注意力权重；
+  \item \texttt{Cell 40}：算 \(z^{(2)}\)；
+  \item \texttt{Cell 49, 51, 55}：把单个词推广到整句话所有词。
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+query = inputs[1]
+attn_scores_2 = torch.empty(inputs.shape[0])
+for i, x_i in enumerate(inputs):
+    attn_scores_2[i] = torch.dot(x_i, query)
+
+attn_weights_2 = torch.softmax(attn_scores_2, dim=0)
+context_vec_2 = torch.zeros(query.shape)
+for i, x_i in enumerate(inputs):
+    context_vec_2 += attn_weights_2[i] * x_i
+\end{lstlisting}
+\end{codeblock}
+
+\subsection{这一步和真实模型还差什么}
+
+这一节故意省略了三件事：
+
+\begin{enumerate}
+  \item 没有可训练参数；
+  \item 没有区分 query、key、value；
+  \item 没有因果遮罩，所以还不能直接拿来做 GPT 式的下一个词预测。
+\end{enumerate}
+
+\begin{keypointblock}
+极简 self-attention 的骨架只有三步：\textbf{相关性打分 $\rightarrow$ softmax 归一化 $\rightarrow$ 加权求和}。
+\end{keypointblock}
+
+\section{问题三：为什么真实模型要先变成 Q、K、V}
+
+\begin{problemblock}
+如果直接拿原始输入向量互相做点积，模型几乎没有学习空间。真实模型需要自己学会“什么叫相关”“该取什么信息”，这就是 Q、K、V 的来历。
+\end{problemblock}
+
+\begin{intuitionblock}
+可以把它想成三个不同视角：
+\begin{itemize}
+  \item Query：当前词现在想找什么；
+  \item Key：每个词身上提供了什么“可被匹配”的线索；
+  \item Value：每个词真正携带、最后会被取走的信息。
+\end{itemize}
+如果没有这三套投影，模型只能在原始 embedding 空间里硬算相关性，表达能力会弱很多。
+\end{intuitionblock}
+
+\begin{mathblock}
+对每个输入词 \(x^{(i)}\)，先乘三组可训练矩阵：
+\[
+q^{(i)} = x^{(i)} W_Q,\qquad
+k^{(i)} = x^{(i)} W_K,\qquad
+v^{(i)} = x^{(i)} W_V.
+\]
+
+这里：
+\begin{itemize}
+  \item \(W_Q\) 学“当前词该怎么提问”；
+  \item \(W_K\) 学“每个词该怎么被匹配”；
+  \item \(W_V\) 学“每个词该输出什么内容”。
+\end{itemize}
+
+然后第 \(i\) 个词对第 \(j\) 个词的分数变成
+\[
+s_{ij} = q^{(i)} \cdot k^{(j)}.
+\]
+再做缩放和 softmax：
+\[
+\alpha_{ij}
+=
+\operatorname{softmax}\!\left(\frac{s_{ij}}{\sqrt{d_k}}\right).
+\]
+这里的 \(d_k\) 是 key 向量的维度。除以 \(\sqrt{d_k}\) 是为了避免维度变大时点积数值过大，导致 softmax 过于尖锐、训练不稳定。
+
+最后上下文向量变成
+\[
+z^{(i)} = \sum_j \alpha_{ij} v^{(j)}.
+\]
+注意：\textbf{加权求和时用的是 value，不是原始输入}。
+\end{mathblock}
+
+notebook 用 \(d_{\text{in}}=3\)、\(d_{\text{out}}=2\) 做了一个很小的演示。对第二个词，算出的关键数字是：
+
+\begin{itemize}
+  \item \(q^{(2)} = [0.4306,\; 1.4551]\)；
+  \item 原始分数 \(s_{2j}\) 为 \([1.2705,\; 1.8524,\; 1.8111,\; 1.0795,\; 0.5577,\; 1.5440]\)；
+  \item 缩放 softmax 后的权重为 \([0.1500,\; 0.2264,\; 0.2199,\; 0.1311,\; 0.0906,\; 0.1820]\)；
+  \item 最终 \(z^{(2)} = [0.3061,\; 0.8210]\)。
+\end{itemize}
+
+\begin{codeblock}
+notebook 这一段对应：
+\begin{itemize}
+  \item \texttt{Cell 66--83}：手工一步步计算 Q、K、V、分数、权重、上下文；
+  \item \texttt{Cell 86}：\texttt{SelfAttention\_v1}，手写参数矩阵；
+  \item \texttt{Cell 89}：\texttt{SelfAttention\_v2}，用 \texttt{nn.Linear} 改写，更接近真实工程写法。
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+keys = self.W_key(x)
+queries = self.W_query(x)
+values = self.W_value(x)
+
+attn_scores = queries @ keys.T
+attn_weights = torch.softmax(
+    attn_scores / keys.shape[-1]**0.5, dim=-1
+)
+context_vec = attn_weights @ values
+\end{lstlisting}
+\end{codeblock}
+
+\begin{keypointblock}
+Q、K、V 不是为了把公式写复杂，而是为了让模型能学会“怎么提问、怎么匹配、怎么取值”。
+\end{keypointblock}
+
+\section{问题四：为什么语言模型必须加 causal mask}
+
+\begin{problemblock}
+如果我们在做“预测下一个词”，模型在计算当前位置时就绝不能偷看未来词。否则训练时它相当于提前看答案，推理时却看不到，训练和部署会不一致。
+\end{problemblock}
+
+\begin{intuitionblock}
+对第 \(t\) 个位置来说，它最多只能看第 \(1\) 到第 \(t\) 个词，不能看第 \(t+1\) 个及之后的词。causal mask 的作用就是把未来位置的注意力分数强行封死。
+\end{intuitionblock}
+
+\begin{mathblock}
+设 \(M_{ij}\) 是遮罩矩阵：
+\[
+M_{ij} =
+\begin{cases}
+0, & j \le i, \\
+-\infty, & j > i.
+\end{cases}
+\]
+那么 masked attention 写成
+\[
+\alpha_{ij}
+=
+\operatorname{softmax}
+\left(
+\frac{s_{ij} + M_{ij}}{\sqrt{d_k}}
+\right).
+\]
+这里把未来位置设成 \(-\infty\)，是为了让 softmax 后这些位置的权重精确变成 0。
+
+为什么不在 softmax 之后再遮？因为 softmax 之后每一行已经是一组概率，直接乘 0 会破坏“总和为 1”的性质，还得额外再归一化。
+\end{mathblock}
+
+notebook 先展示了一个“先 softmax 再乘下三角 mask”的直观写法，然后说明更好的做法是：\textbf{先在分数阶段用 \(-\infty\) 遮掉未来位置，再进 softmax}。
+
+\begin{codeblock}
+这部分对应：
+\begin{itemize}
+  \item \texttt{Cell 98--110}：用三角矩阵讲清楚 causal mask；
+  \item \texttt{Cell 112--117}：在注意力权重后加 dropout；
+  \item \texttt{Cell 121}：实现 \texttt{CausalAttention} 类，并支持 batch 输入。
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+attn_scores = queries @ keys.transpose(1, 2)
+attn_scores.masked_fill_(
+    self.mask.bool()[:num_tokens, :num_tokens], -torch.inf
+)
+attn_weights = torch.softmax(
+    attn_scores / keys.shape[-1]**0.5, dim=-1
+)
+attn_weights = self.dropout(attn_weights)
+context_vec = attn_weights @ values
+\end{lstlisting}
+\end{codeblock}
+
+关于 dropout，这一章只需要记住两点：
+
+\begin{enumerate}
+  \item 它只在训练时打开，推理时关闭；
+  \item 它会随机丢掉一部分注意力权重，用来减轻过拟合。
+\end{enumerate}
+
+\begin{keypointblock}
+causal mask 的本质不是“矩阵技巧”，而是“保证第 \(t\) 个位置只能依赖它已经见过的历史信息”。
+\end{keypointblock}
+
+\section{问题五：为什么要从单头变成 multi-head}
+
+\begin{problemblock}
+单头 attention 只有一套 Q、K、V 投影，它对“相关性”的理解只有一个视角。真实语言里，一个词同时可能关心语法关系、语义关系、指代关系、位置关系。单头不一定装得下。
+\end{problemblock}
+
+\begin{intuitionblock}
+multi-head attention 的想法是：不要只让模型用一副眼镜看句子，而是同时戴上多副眼镜。每个 head 都有自己的一套投影参数，于是它们可以从不同子空间里抽取不同关系，最后再把结果拼起来。
+\end{intuitionblock}
+
+\begin{mathblock}
+第 \(h\) 个头先单独做一次 attention：
+\[
+\text{head}_h = \operatorname{Attention}(Q_h, K_h, V_h).
+\]
+然后把所有头的输出拼接起来：
+\[
+\text{MultiHead}(Q,K,V)
+=
+\operatorname{Concat}(\text{head}_1,\ldots,\text{head}_H) W_O.
+\]
+
+这里：
+\begin{itemize}
+  \item \(H\) 是 head 的数量；
+  \item \(W_O\) 是最后把多头结果再混合一次的输出投影矩阵；
+  \item 每个 head 通常只负责总维度中的一部分，所以会有
+  \[
+  \text{head\_dim} = d_{\text{out}} / H .
+  \]
+\end{itemize}
+\end{mathblock}
+
+notebook 给了两个版本：
+
+\begin{enumerate}
+  \item \textbf{概念清晰版}：\texttt{MultiHeadAttentionWrapper}，直接把多个单头 \texttt{CausalAttention} 并排跑，再把结果拼接起来。
+  \item \textbf{工程高效版}：\texttt{MultiHeadAttention}，先用一组大的线性层算出总的 Q、K、V，再通过 reshape 和 transpose 把最后一个维度切成多个 head 并行处理。
+\end{enumerate}
+
+\begin{codeblock}
+这部分对应：
+\begin{itemize}
+  \item \texttt{Cell 126--128}：先讲 single-head 与 multi-head 的直觉；
+  \item \texttt{Cell 127}：wrapper 写法，容易懂；
+  \item \texttt{Cell 131}：更标准、更高效的实现；
+  \item \texttt{Cell 138--140}：解释四维张量上的批量矩阵乘法。
+\end{itemize}
+\end{codeblock}
+
+这一节还有两个容易混的点：
+
+\begin{itemize}
+  \item wrapper 版本把多个头直接拼起来，所以输出维度会变成“每头维度 $\times$ 头数”；
+  \item 高效版本通常把总输出维度固定成 \(d_{\text{out}}\)，再用 \(\text{out\_proj}\) 做一次线性混合。
+\end{itemize}
+
+\begin{keypointblock}
+multi-head 的价值不在“头越多越神奇”，而在“让模型能并行地从不同表示子空间读取不同类型的关系”。
+\end{keypointblock}
+
+\section{把 notebook 的代码主线整理成一张表}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.18\textwidth} >{\raggedright\arraybackslash}p{0.18\textwidth} >{\raggedright\arraybackslash}p{0.56\textwidth}}
+\toprule
+阶段 & 关键 cell & 你应该把它看成什么 \\
+\midrule
+\endfirsthead
+\toprule
+阶段 & 关键 cell & 你应该把它看成什么 \\
+\midrule
+\endhead
+长序列问题 & 8--16 & 为什么旧的 encoder-decoder 会遇到信息压缩瓶颈，为什么要引入 attention。 \\
+极简 self-attention & 24, 28, 37, 40 & 一个词如何对全句打分、归一化、加权求和。 \\
+推广到整句 & 47, 49, 51, 55 & 从“算一个词的上下文”推广到“同时算所有词的上下文”。 \\
+引入 Q/K/V & 66--83 & 从无参数玩具版过渡到真实可训练版。 \\
+封装单头模块 & 86, 89 & 把手工步骤封装成 \texttt{SelfAttention} 类。 \\
+causal mask & 98--110 & 为什么 mask 必须在 softmax 之前作用到分数上。 \\
+dropout 与 batch & 115--121 & 加训练期正则，并把输入扩展到 batch 维。 \\
+多头封装 & 127, 131 & 从概念清晰版过渡到高效工程版。 \\
+高维张量乘法 & 138--140 & 帮你看懂四维张量上的 \texttt{@} 到底在做什么。 \\
+\bottomrule
+\end{longtable}
+
+\section{这一章和真实 GPT 之间还差什么}
+
+学完这个 notebook，你已经拿到了 GPT 注意力模块的骨架，但距离完整 GPT 还差几块：
+
+\begin{enumerate}
+  \item 还没有把注意力和前馈网络、残差连接、LayerNorm 组装成完整 block；
+  \item 还没有接上 token embedding、位置编码、输出头；
+  \item 还没有放进训练循环和数据加载流程里；
+  \item 这里的 toy 数字只是演示，不代表真实模型规模。
+\end{enumerate}
+
+但从“理解 attention 模块本身”这个目标看，第 3 章已经把最关键的部分讲完了。
+
+\section{最后真正该记住什么}
+
+\begin{enumerate}
+  \item attention 的动机是解决“长序列信息被固定向量压缩丢失”的问题。
+  \item self-attention 的最小计算链是：打分、softmax、加权求和。
+  \item 真实模型用 Q、K、V，是为了让“提问、匹配、取值”都可学习。
+  \item causal mask 保证语言模型在当前位置不能偷看未来词。
+  \item multi-head 让模型能从不同表示子空间并行读取不同关系。
+  \item notebook 里的每段代码都只是把这条主线一步步写出来。
+\end{enumerate}
+
+\begin{keypointblock}
+如果你只能记一句话，那就是：\textbf{attention 就是“当前词按相关性去全序列里取信息”，而第 3 章是在把这个想法一步步变成 GPT 里真正可用的代码模块。}
+\end{keypointblock}
+
+\end{document}

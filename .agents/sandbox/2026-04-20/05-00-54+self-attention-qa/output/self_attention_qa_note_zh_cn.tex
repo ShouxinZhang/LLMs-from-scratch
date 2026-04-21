@@ -1,0 +1,314 @@
+\documentclass[12pt,a4paper]{ctexart}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{array,booktabs,tabularx}
+\usepackage{enumitem}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\title{3.3.1 极简版 Self-Attention 讲义\\\large 先问题，再直觉，再公式，再代码}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{这一节到底在解决什么}
+
+这一节不是在讲完整的 Transformer，而是在讲它里面最核心的一根骨架：
+
+\begin{quote}
+当我们更新一个 token 的表示时，怎样让它有选择地吸收其他 token 的信息？
+\end{quote}
+
+作者先故意讲一个\textbf{没有可训练参数}的版本，不是因为真实模型就这么做，而是因为这样最容易把 attention 的本质看清楚。
+
+这一节真正想让你先看懂的，不是复杂公式，而是下面这条链：
+
+\[
+\text{相关性打分} \rightarrow \text{softmax 归一化} \rightarrow \text{加权求和}
+\]
+
+\section{新的讲解原则}
+
+从现在开始，每个知识点都按下面四层来讲：
+
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{背景问题}：它要解决什么现实困难；
+  \item \textbf{朴素直觉}：先用一句人话说清楚它在做什么；
+  \item \textbf{数学表达}：再给公式，而且每个符号都翻译成人话；
+  \item \textbf{代码对应}：最后再落回 notebook 里的具体代码。
+\end{enumerate}
+
+这一份关于 self-attention 的讲义，也严格按这个顺序展开。
+
+\section{新手最该先问的 5 个问题}
+
+\begin{enumerate}[leftmargin=2em]
+  \item 什么叫``更新一个 token 的表示''？
+  \item 为什么这里会冒出一个新的向量 \(z^{(i)}\)？
+  \item 为什么先只看第二个词 \(x^{(2)}\)？
+  \item 为什么相关性可以用点积来表示？
+  \item 为什么最后是加权求和，而不是只挑最相关的那个词？
+\end{enumerate}
+
+\section{QA 讲解}
+
+\subsection{Q1：什么叫更新一个 token 的表示？}
+
+答：原始输入里的每个 token 已经先有一个 embedding，记成 \(x^{(i)}\)。
+但这个 embedding 只说明``它自己是谁''，还没有显式融合上下文。
+
+attention 要做的事是：围绕某个 token，把整句话里和它相关的信息重新汇总一遍，得到一个新的表示 \(z^{(i)}\)。
+
+所以可以先把 \(z^{(i)}\) 理解成：
+
+\begin{quote}
+原来的 token 表示，加上它从其他 token 那里收集来的上下文信息。
+\end{quote}
+
+\subsection{Q2：为什么这里会冒出一个新的上下文向量？}
+
+答：因为模型真正需要的，不只是``这个词本身是什么''，还需要``这个词在当前句子里意味着什么''。
+
+例如同一个词放在不同句子里，依赖的上下文会不同。
+所以 self-attention 的输出不是把 \(x^{(i)}\) 原样抄一遍，而是生成一个\textbf{带上下文的新表示} \(z^{(i)}\)。
+
+\subsection{Q3：为什么先只看第二个词？}
+
+答：因为如果一上来就把所有 \(z^{(1)}, z^{(2)}, \dots, z^{(T)}\) 全部同时写出来，新手很容易被下标淹没。
+
+作者先固定一个具体例子：第二个词 \texttt{journey}，记作 \(x^{(2)}\)。
+这样问题就收缩成一句话：
+
+\begin{quote}
+怎样根据 \(x^{(2)}\)，从整句话里挑出对它最有用的信息？
+\end{quote}
+
+等你看懂一个 token 的流程后，再推广到全部 token 就很自然了。
+
+\subsection{Q4：为什么相关性可以用点积来表示？}
+
+答：在这个极简版里，每个 token 都是一个向量。
+两个向量做点积时，如果它们的方向更一致、各维度上更同向，结果通常更大。
+
+所以这里把点积当成一个粗略的``相似性分数''：
+
+\[
+\omega_{2i} = x^{(i)} q^{(2)T}
+\]
+
+其中 \(q^{(2)} = x^{(2)}\)。
+
+这句话的人话翻译是：
+
+\begin{quote}
+把第二个词当作当前关注对象，看句子里每个词和它有多对齐。
+\end{quote}
+
+注意：这里的 \(\omega\) 只是原始分数，还不是最终权重。
+
+\subsection{Q5：为什么最后是加权求和，而不是只挑最相关的那个词？}
+
+答：因为一个 token 往往不是只依赖一个位置，而是可能同时依赖多个位置。
+
+如果只取最大值，相当于说``我只看最相关的一个词''，这会丢掉其他有用信息。
+attention 的做法更柔和：
+
+\begin{enumerate}[leftmargin=2em]
+  \item 先给所有位置一个相关性分数；
+  \item 再把分数变成总和为 1 的权重；
+  \item 最后把所有输入向量按权重混合起来。
+\end{enumerate}
+
+数学上写成：
+
+\[
+\alpha_{2i} = \frac{e^{\omega_{2i}}}{\sum_j e^{\omega_{2j}}}
+\]
+
+\[
+z^{(2)} = \sum_i \alpha_{2i} x^{(i)}
+\]
+
+这就是这一节最核心的骨架。
+
+\section{把 notebook 里的例子完整走一遍}
+
+\subsection{输入是什么}
+
+notebook 用一句很短的 toy sentence：
+
+\begin{center}
+\texttt{Your journey starts with one step}
+\end{center}
+
+每个词先被表示成一个 3 维向量：
+
+\begin{center}
+\begin{tabular}{c c c}
+\toprule
+token & 记号 & 向量 \\
+\midrule
+Your & \(x^{(1)}\) & \([0.43, 0.15, 0.89]\) \\
+journey & \(x^{(2)}\) & \([0.55, 0.87, 0.66]\) \\
+starts & \(x^{(3)}\) & \([0.57, 0.85, 0.64]\) \\
+with & \(x^{(4)}\) & \([0.22, 0.58, 0.33]\) \\
+one & \(x^{(5)}\) & \([0.77, 0.25, 0.10]\) \\
+step & \(x^{(6)}\) & \([0.05, 0.80, 0.55]\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+这里 3 维只是为了演示方便，真实模型里的维度会大很多。
+
+\subsection{第 1 步：算 attention scores}
+
+这一节把第二个词当作查询：
+
+\[
+q^{(2)} = x^{(2)} = [0.55, 0.87, 0.66]
+\]
+
+然后和所有输入向量做点积：
+
+\[
+\omega_{21} = x^{(1)} \cdot q^{(2)} = 0.9544
+\]
+\[
+\omega_{22} = x^{(2)} \cdot q^{(2)} = 1.4950
+\]
+\[
+\omega_{23} = x^{(3)} \cdot q^{(2)} = 1.4754
+\]
+\[
+\omega_{24} = 0.8434,\quad
+\omega_{25} = 0.7070,\quad
+\omega_{26} = 1.0865
+\]
+
+把它们合起来就是：
+
+\[
+[0.9544,\ 1.4950,\ 1.4754,\ 0.8434,\ 0.7070,\ 1.0865]
+\]
+
+直觉上可以这样读：
+
+\begin{quote}
+对于当前的 \texttt{journey}，\texttt{journey} 自己和 \texttt{starts} 的分数比较高，说明它们和当前查询更对齐。
+\end{quote}
+
+\subsection{第 2 步：把 scores 变成真正的权重}
+
+这些分数还不能直接拿来加权，因为它们的和不是 1，而且也不方便解释成``占比''。
+
+所以作者接着做 softmax，得到 attention weights：
+
+\[
+[\alpha_{21}, \alpha_{22}, \alpha_{23}, \alpha_{24}, \alpha_{25}, \alpha_{26}]
+= [0.1385,\ 0.2379,\ 0.2333,\ 0.1240,\ 0.1082,\ 0.1581]
+\]
+
+现在这些数可以直接理解成：
+
+\begin{quote}
+当我们更新 \(x^{(2)}\) 时，句子里每个词各自应该贡献多少比例。
+\end{quote}
+
+它们的和等于 1，这正是 softmax 的作用。
+
+\subsection{第 3 步：做加权求和，得到上下文向量}
+
+最后把所有输入向量按这些权重做加权平均：
+
+\[
+z^{(2)} = \sum_i \alpha_{2i} x^{(i)}
+\]
+
+在 notebook 的例子里，算出来是：
+
+\[
+z^{(2)} = [0.4419,\ 0.6515,\ 0.5683]
+\]
+
+这个 \(z^{(2)}\) 就是第二个词的新表示。
+它不再只是原始的 \texttt{journey} embedding，而是已经混入了整句话里其他位置的信息。
+
+\section{这一节和真实 Transformer 还差什么}
+
+最关键的一点是：这一版\textbf{没有可训练参数}。
+
+这里直接用了：
+
+\begin{enumerate}[leftmargin=2em]
+  \item \(q^{(2)} = x^{(2)}\)
+  \item 被比较的对象也是原始输入 \(x^{(i)}\)
+  \item 最后加权的还是原始输入 \(x^{(i)}\)
+\end{enumerate}
+
+而真正的 Transformer 不会直接拿原始输入互相比，它会先学出三套变换：
+
+\[
+Q = XW_Q,\quad K = XW_K,\quad V = XW_V
+\]
+
+也就是：
+
+\begin{enumerate}[leftmargin=2em]
+  \item 用 \(Q\) 表示``我现在想找什么''；
+  \item 用 \(K\) 表示``我这里有什么可供匹配''；
+  \item 用 \(V\) 表示``如果你来取我，你最终取走什么信息''。
+\end{enumerate}
+
+所以这一节不是完整答案，而是把完整答案拆开前的准备动作。
+
+\section{代码里每一步对应什么}
+
+文件位置是：
+
+\begin{center}
+\texttt{ch03/01\_main-chapter-code/ch03.ipynb}
+\end{center}
+
+这一小节可以按下面的顺序看代码：
+
+\begin{enumerate}[leftmargin=2em]
+  \item \texttt{inputs = torch.tensor(...)}：定义 6 个 token 的 toy embedding。
+  \item \texttt{query = inputs[1]}：固定第二个词作为当前查询。
+  \item \texttt{torch.dot(x\_i, query)}：计算每个词和查询的点积分数。
+  \item \texttt{softmax\_naive} 或 \texttt{torch.softmax}：把分数变成和为 1 的权重。
+  \item \texttt{context\_vec\_2 += attn\_weights\_2[i] * x\_i}：做加权求和，得到 \(z^{(2)}\)。
+\end{enumerate}
+
+如果你是第一次看 notebook，真正要盯住的是变量流向：
+
+\[
+inputs \rightarrow query \rightarrow attn\_scores \rightarrow attn\_weights \rightarrow context\_vec
+\]
+
+\section{这一节真正该记住什么}
+
+这一节最重要的不是记住具体数字，而是记住下面这句话：
+
+\begin{quote}
+self-attention 的最小骨架就是：选定一个 token，计算它和所有 token 的相关性，把相关性变成权重，再用这些权重对整句信息做加权汇总。
+\end{quote}
+
+如果再压缩成更短的一句话，就是：
+
+\begin{quote}
+相关性打分 $\rightarrow$ 归一化 $\rightarrow$ 加权求和。
+\end{quote}
+
+\end{document}

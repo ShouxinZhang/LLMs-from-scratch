@@ -1,0 +1,164 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage[T1]{fontenc}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  urlcolor=blue!55!black
+}
+
+\setlist[enumerate]{itemsep=0.35em, topsep=0.45em}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{remark}[theorem]{Remark}
+
+\tcbset{
+  commonbox/.style={
+    enhanced,
+    breakable,
+    boxrule=0.8pt,
+    arc=2mm,
+    left=1.4mm,
+    right=1.4mm,
+    top=1mm,
+    bottom=1mm,
+    colback=white
+  }
+}
+
+\newtcolorbox{problemblock}{
+  commonbox,
+  colframe=BrickRed!65!black,
+  colback=BrickRed!4,
+  title=Problem,
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{intuitionblock}{
+  commonbox,
+  colframe=RoyalBlue!70!black,
+  colback=RoyalBlue!4,
+  title=Intuition,
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{solutionblock}{
+  commonbox,
+  colframe=ForestGreen!60!black,
+  colback=ForestGreen!4,
+  title=Solution,
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{keypointblock}{
+  commonbox,
+  colframe=black!65,
+  colback=black!3,
+  title=Key Point,
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{mathblock}[1]{
+  commonbox,
+  colframe=Purple!60!black,
+  colback=Purple!4,
+  title=#1,
+  fonttitle=\bfseries
+}
+
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+
+\title{[Topic Title]\\\large [Optional Subtitle]}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{What This Lesson Is Trying to Explain}
+
+\begin{problemblock}
+[State the real-world or learning problem first.]
+\end{problemblock}
+
+[Open with short, plain sentences. If the user already gave a good intuitive paragraph,
+reuse and polish it here instead of replacing it.]
+
+\begin{intuitionblock}
+[Give the first mental picture before introducing formal notation.]
+\end{intuitionblock}
+
+\begin{keypointblock}
+[Write the one-sentence takeaway the beginner should keep in mind.]
+\end{keypointblock}
+
+\section{Basic Definition}
+
+\begin{mathblock}{Definition}
+\begin{definition}
+[Insert the core definition.]
+\end{definition}
+\end{mathblock}
+
+[Explain each new word immediately in ordinary language.]
+
+\section{The First Picture or Smallest Example}
+
+[Add a tiny numerical example, coordinate picture, or one TikZ figure if the idea is geometric.]
+
+\section{A Basic Fact or Theorem}
+
+\begin{mathblock}{Theorem}
+\begin{theorem}
+[Insert one basic fact worth remembering.]
+\end{theorem}
+\end{mathblock}
+
+\begin{mathblock}{Proof}
+\begin{proof}
+[Keep the proof short. For beginners, prefer a geometric or arithmetic proof over abstraction.]
+\end{proof}
+\end{mathblock}
+
+\begin{mathblock}{Example}
+\begin{example}
+[Work one example completely.]
+\end{example}
+\end{mathblock}
+
+\section{Connection to Physics or Code}
+
+\begin{problemblock}
+[Ask where this idea actually appears.]
+\end{problemblock}
+
+\begin{solutionblock}
+[Connect the idea to physics, code, or the user’s actual context.]
+\end{solutionblock}
+
+\section{What to Remember}
+
+\begin{enumerate}[label=\arabic*.]
+  \item [Key point 1]
+  \item [Key point 2]
+  \item [Key point 3]
+\end{enumerate}
+
+\begin{keypointblock}
+[End with one sentence simple enough to remember.]
+\end{keypointblock}
+
+\end{document}

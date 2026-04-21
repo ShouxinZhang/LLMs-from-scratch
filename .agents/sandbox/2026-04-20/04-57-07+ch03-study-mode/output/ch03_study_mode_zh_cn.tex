@@ -1,0 +1,211 @@
+\documentclass[12pt,a4paper]{ctexart}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{array,booktabs,tabularx}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\title{第 3 章零基础学习模式说明\\\large 面向 \texttt{ch03/01\_main-chapter-code/ch03.ipynb}}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{为什么换一种学法}
+
+之前那种学法的问题不是资料不够，而是问题链没有对齐：
+
+\begin{enumerate}[leftmargin=2em]
+  \item 你在搬运截图；
+  \item 我在猜你此刻缺什么背景；
+  \item 中间没有一条共同的问题主线。
+\end{enumerate}
+
+对零基础来说，更有效的方式不是``看一张图，临时解释一张图''，而是先搭一条稳定的学习楼梯：
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=0.9cm,
+  box/.style={draw, rounded corners, fill=blue!6, minimum width=9cm, minimum height=0.9cm, align=center},
+  arr/.style={-Latex, thick}
+]
+\node[box] (a) {先问：这个模块在解决什么现实问题};
+\node[box, below=of a] (b) {再问：没有它时，旧方法卡在哪里};
+\node[box, below=of b] (c) {再问：最朴素的直觉是什么};
+\node[box, below=of c] (d) {最后才上公式、符号和代码};
+\draw[arr] (a) -- (b);
+\draw[arr] (b) -- (c);
+\draw[arr] (c) -- (d);
+\end{tikzpicture}
+\end{center}
+
+这一份文档的目标不是讲完 attention 的所有细节，而是先固定第 3 章接下来应该怎么学。
+
+\section{新的讲解原则}
+
+从现在开始，每个知识点都按下面四层来讲：
+
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{背景问题}：它要解决什么现实困难；
+  \item \textbf{朴素直觉}：先用一句人话说清楚它在做什么；
+  \item \textbf{数学表达}：再给公式，而且每个符号都翻译成人话；
+  \item \textbf{代码对应}：最后再落回 notebook 里的具体代码。
+\end{enumerate}
+
+这意味着后续不会默认你已经知道 embedding、hidden state、softmax、query、key、value 这些词。
+只要出现一个新对象，就先解释它是什么，再继续往下推。
+
+\section{我来模拟新手提问}
+
+零基础最大的问题往往不是``听不懂答案''，而是``根本不知道该先问什么''。
+所以后续我会同时扮演两个人：
+
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{新手提问者}：负责把当前阶段最该问的问题提出来；
+  \item \textbf{讲解者}：负责按直觉到公式的顺序回答。
+\end{enumerate}
+
+这能避免学习过程失去方向，也能避免在还没建立直觉前就被公式淹没。
+
+\section{每一节的固定模板}
+
+后续讲第 3 章任意一个小节，统一按下面这个模板展开：
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{1.2cm} X}
+\toprule
+步骤 & 要做什么 \\
+\midrule
+1 & 先说这一节解决什么问题 \\
+2 & 先列出 3--5 个新手此刻最该问的问题 \\
+3 & 逐个回答，先讲人话直觉，再讲最小例子 \\
+4 & 给出公式版总结，并解释每个符号的语义 \\
+5 & 对应到 notebook 里的代码和变量名 \\
+6 & 收束成一句``这一节真正该记住什么'' \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+这个模板的重点不是排版，而是强制学习顺序固定下来，避免讲着讲着突然跳到太抽象的层面。
+
+\section{第 3 章需要先问的核心问题}
+
+如果从零开始学这一章，最重要的不是先看图，而是先建立问题树。建议按下面的顺序问：
+
+\subsection{第一组：为什么需要 attention}
+
+\begin{enumerate}[leftmargin=2em]
+  \item 语言模型为什么会遇到长序列困难；
+  \item 旧的 RNN encoder-decoder 为什么不够；
+  \item attention 到底想替代哪一步；
+  \item attention 和``按需回看上下文''之间是什么关系。
+\end{enumerate}
+
+\subsection{第二组：self-attention 到底在算什么}
+
+\begin{enumerate}[leftmargin=2em]
+  \item 什么叫``一个 token 去看别的 token''；
+  \item 为什么相关性可以用点积来表示；
+  \item 为什么算完分数后还要做 softmax；
+  \item 为什么最后是加权求和，而不是直接选一个最相关的词。
+\end{enumerate}
+
+\subsection{第三组：为什么会出现 Q、K、V}
+
+\begin{enumerate}[leftmargin=2em]
+  \item 为什么不能直接拿原始输入向量互相做点积；
+  \item Q、K、V 分别承担什么角色；
+  \item 为什么要除以 \(\sqrt{d_k}\)；
+  \item 可训练参数到底把模型能力提升在哪里。
+\end{enumerate}
+
+\subsection{第四组：为什么语言模型还要 causal mask}
+
+\begin{enumerate}[leftmargin=2em]
+  \item 生成下一个词时，为什么不能看未来；
+  \item mask 是在什么时候加进去的；
+  \item 为什么要在 softmax 之前屏蔽；
+  \item dropout 在注意力里起什么作用。
+\end{enumerate}
+
+\subsection{第五组：multi-head 到底多了什么}
+
+\begin{enumerate}[leftmargin=2em]
+  \item 为什么一个头不够；
+  \item 多个头是不是只是``多算几遍''；
+  \item 不同头在学什么不同的关系；
+  \item 这一步最容易出错的 shape 是什么。
+\end{enumerate}
+
+\section{建议的学习顺序}
+
+第 3 章推荐按下面这条主线推进，而不是跟着截图随机跳：
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=0.9cm,
+  box/.style={draw, rounded corners, fill=green!7, minimum width=10.2cm, minimum height=0.9cm, align=center},
+  arr/.style={-Latex, thick}
+]
+\node[box] (s1) {1. 什么叫序列建模，长序列为什么难};
+\node[box, below=of s1] (s2) {2. RNN encoder-decoder 如何把整句压成一个状态};
+\node[box, below=of s2] (s3) {3. attention 如何把``压缩整句''改成``按需读取''};
+\node[box, below=of s3] (s4) {4. self-attention 的相关性打分、softmax、加权求和};
+\node[box, below=of s4] (s5) {5. Q、K、V 和缩放点积注意力};
+\node[box, below=of s5] (s6) {6. causal mask 和 decoder-only 的约束};
+\node[box, below=of s6] (s7) {7. multi-head attention 和 shape 视角};
+\draw[arr] (s1) -- (s2);
+\draw[arr] (s2) -- (s3);
+\draw[arr] (s3) -- (s4);
+\draw[arr] (s4) -- (s5);
+\draw[arr] (s5) -- (s6);
+\draw[arr] (s6) -- (s7);
+\end{tikzpicture}
+\end{center}
+
+如果中途卡住，就回头检查自己卡的是哪一层：
+
+\begin{enumerate}[leftmargin=2em]
+  \item 是背景没懂；
+  \item 是直觉没建立；
+  \item 还是公式里的符号没翻译清楚。
+\end{enumerate}
+
+\section{后续互动的具体方式}
+
+后续学习时，不再需要你一张张贴图让我临时解释上下文。
+更有效的协作方式是：
+
+\begin{enumerate}[leftmargin=2em]
+  \item 我主动给出当前小节最该问的问题；
+  \item 我按固定模板逐步讲；
+  \item 你只需要在某一步打断，说``这句没懂''、``这个符号没懂''、``这个直觉不对''。
+\end{enumerate}
+
+这样做的好处是，动作空间会小很多，双方注意力会集中在同一条问题链上。
+
+\section{一句话版总结}
+
+第 3 章接下来不再按``截图驱动''来学，而是按``问题驱动''来学：
+
+\begin{quote}
+先问它解决什么问题，再建立朴素直觉，再上公式，最后回到 notebook 代码。
+\end{quote}
+
+而我接下来的职责，是替零基础的新手把最该问的问题先问出来，再按这个顺序把答案讲清楚。
+
+\end{document}
