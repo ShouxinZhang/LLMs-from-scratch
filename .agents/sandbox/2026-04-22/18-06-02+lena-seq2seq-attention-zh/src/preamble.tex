@@ -1,0 +1,57 @@
+% Shared preamble for the Lena Voita seq2seq-and-attention Chinese lesson.
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usetikzlibrary{arrows.meta,calc,positioning,fit,matrix}
+
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!55!black}
+\setlist[enumerate]{itemsep=0.35em, topsep=0.45em}
+\setlist[itemize]{itemsep=0.35em, topsep=0.45em}
+
+\newtheorem{theorem}{命题}[section]
+\newtheorem{definition}[theorem]{定义}
+\newtheorem{example}[theorem]{例}
+\newtheorem{remark}[theorem]{备注}
+
+\tcbset{
+  commonbox/.style={
+    enhanced, breakable,
+    boxrule=0.8pt, arc=2mm,
+    left=1.4mm, right=1.4mm, top=1mm, bottom=1mm,
+    colback=white
+  }
+}
+\newtcolorbox{problemblock}{commonbox,colframe=BrickRed!65!black,colback=BrickRed!4,title=背景问题,fonttitle=\bfseries}
+\newtcolorbox{intuitionblock}{commonbox,colframe=RoyalBlue!70!black,colback=RoyalBlue!4,title=朴素直觉,fonttitle=\bfseries}
+\newtcolorbox{mathbox}[1]{commonbox,colframe=Purple!60!black,colback=Purple!4,title=#1,fonttitle=\bfseries}
+\newtcolorbox{engbox}{commonbox,colframe=ForestGreen!60!black,colback=ForestGreen!4,title=代码 / 工程对应,fonttitle=\bfseries}
+\newtcolorbox{keypointblock}{commonbox,colframe=black!65,colback=black!3,title=记住这一点,fonttitle=\bfseries}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  keywordstyle=\color{Purple!70!black}\bfseries,
+  commentstyle=\color{gray!70!black}\itshape,
+  stringstyle=\color{ForestGreen!50!black},
+  showstringspaces=false,
+  language=Python,
+  frame=single,
+  rulecolor=\color{black!20},
+  framesep=2pt,
+  xleftmargin=0.5em
+}
+
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\softmax}{\mathrm{softmax}}
+\newcommand{\score}{\mathrm{score}}

@@ -1,0 +1,193 @@
+\section{子词切分：字节对编码 BPE}
+
+\subsection{章节定位与零基础该问的问题}
+
+前三章我们一直假设“词表是给定的”：模型有一张固定的词典 $V$，输入输出都从里面选词。
+但真实文本里永远会出现训练时没见过的拼写、人名、专业术语、罕见词。
+本章讨论的就是\textbf{在固定词表的限制下，如何让模型仍然能处理“没见过的词”}。
+答案是\textbf{子词（subword）切分}，最常见的实现就是 BPE。
+
+\begin{problemblock}[零基础读者该追问的四个问题]
+\begin{enumerate}
+    \item 什么叫\textbf{固定词表问题（fixed vocabulary problem）}？模型为什么不能临时加词？
+    \item 什么是 \textbf{UNK}？为什么它对翻译这种任务是灾难？
+    \item BPE 的\textbf{训练阶段}到底在做什么？它学出来的是“词典”还是“规则”？
+    \item BPE 的\textbf{推理阶段}又在做什么？面对一个全新的词，它怎么把它切开？
+\end{enumerate}
+\end{problemblock}
+
+\subsection{固定词表问题}
+
+\begin{problemblock}[问题]
+神经网络的输入层 / 输出层维度在搭建时就已经写死：
+输入 embedding 矩阵是 $|V|\times d$，输出 softmax 是 $d\times|V|$。
+$|V|$ 一旦定下来，模型就只认识这 $|V|$ 个 token。
+那遇到词表外的词怎么办？
+\end{problemblock}
+
+\begin{intuitionblock}[朴素直觉]
+最朴素的办法有两端：
+\begin{itemize}
+    \item \textbf{词级（word-level）}：每个英文单词当一个 token。优点是“一个词一个意思”很自然；
+          缺点是英文 + 形态变化 + 人名 + URL 几乎是无穷的，词表 50k 也兜不住，剩下的全部塞进一个特殊 token \texttt{<unk>}。
+          一旦句子里出现 \texttt{<unk>}，翻译模型就只能输出 \texttt{<unk>}，相当于直接放弃。
+    \item \textbf{字符级（char-level）}：把句子拆成一个个字符。词表只有几十到几千，永远不会 OOV；
+          但代价是序列变得极长（一个 20 字母的英文词 $\to$ 20 个 token），
+          注意力开销 $O(n^2)$ 爆炸，而且语义被打散到单个字母上，模型学得慢。
+\end{itemize}
+中间路线很自然：\textbf{常见词保持完整，罕见词切成更小的、训练时见过的子片段}。
+这就是子词。
+\end{intuitionblock}
+
+\begin{remark}
+BPE 被引入 NMT 的工作是 Sennrich, Haddow \& Birch (2016)，
+\emph{Neural Machine Translation of Rare Words with Subword Units}。
+原本 BPE 是一种数据压缩算法，他们把它“反过来用”：
+不是为了压缩字节，而是为了\textbf{学一张折中粒度的词表}。
+\end{remark}
+
+\subsection{BPE 算法的两个阶段}
+
+BPE 的核心只有一张东西——\textbf{有序合并表（merge table）}。
+训练阶段\textbf{学这张表}，推理阶段\textbf{按这张表切词}。
+
+\subsubsection{训练阶段：学合并规则}
+
+\begin{mathbox}{BPE 训练循环}
+\textbf{初始化}：
+\begin{itemize}
+    \item 词表 $V_0$ = 语料里出现过的\textbf{所有单字符}（外加一个词尾标记，例如 \texttt{</w>}）；
+    \item 合并表 $M = \emptyset$；
+    \item 把每个单词预先切成字符序列，例如 \texttt{cat</w>} $\to$ \texttt{c\,a\,t\,</w>}。
+\end{itemize}
+\textbf{重复 $N$ 次}（$N$ 是想要的合并次数，决定最终词表大小）：
+\begin{enumerate}
+    \item 在整个语料上数所有\textbf{相邻符号对}的频率 $\mathrm{count}(a, b)$；
+    \item 取频率最高的那一对 $(a^\star, b^\star)$；
+    \item 把规则 $a^\star + b^\star \to a^\star b^\star$ 追加到合并表 $M$；
+          把新 token $a^\star b^\star$ 加进词表 $V$；
+    \item 在所有已切分的词里，把出现的 $a^\star, b^\star$ 相邻处合并。
+\end{enumerate}
+\end{mathbox}
+
+\begin{remark}[为什么需要词尾标记]
+如果不加 \texttt{</w>}（或 SentencePiece 用的 \texttt{\_}）这种边界符号，
+合并 \texttt{e+r} 会同时影响 \texttt{lower} 里的 \texttt{er} 和 \texttt{her}。
+加了边界符号之后，\texttt{er</w>} 和 \texttt{er}（词中间的）就是两个不同符号，
+保证一次合并只引入\textbf{一个}新 token。
+\end{remark}
+
+\begin{engbox}[实现上的小技巧]
+真正实现时不会逐字符扫语料，而是：
+\begin{itemize}
+    \item 先把语料压成 \{单词 $\to$ 词频\} 的字典；
+    \item 数“相邻符号对”时按词频加权，例如 \texttt{cat</w>} 出现 4 次，
+          那么对 \texttt{(c,a)}、\texttt{(a,t)}、\texttt{(t,</w>)} 的贡献都各 +4；
+    \item 这样每轮合并的复杂度只跟\textbf{不同单词的数量}有关，而不是语料的总长度。
+\end{itemize}
+\end{engbox}
+
+\begin{example}[一个迷你语料]
+设语料的单词频次表为
+\[
+\texttt{cat}\!\times\!4,\;
+\texttt{mat}\!\times\!5,\;
+\texttt{mats}\!\times\!2,\;
+\texttt{mate}\!\times\!3,\;
+\texttt{ate}\!\times\!3,\;
+\texttt{eat}\!\times\!2.
+\]
+取 $N=5$ 次合并。初始词表是字符 $\{a,c,e,m,s,t,\texttt{</w>}\}$，每个词都切成字符。
+执行训练循环时，最频繁的相邻对会按下面这种顺序被选出：
+\begin{enumerate}
+    \item \texttt{a+t} 出现在 \texttt{cat, mat, mats, mate, ate, eat}，是最频繁的对，
+          合并 $\Rightarrow$ 新 token \texttt{at}；
+    \item 接下来 \texttt{m+at}（来自 mat / mats / mate）频率领先，合并 $\Rightarrow$ \texttt{mat}；
+    \item 再下来 \texttt{at+</w>}（来自原本的 cat / mat / ate）合并 $\Rightarrow$ \texttt{at</w>}；
+    \item \texttt{c+at</w>} 合并 $\Rightarrow$ \texttt{cat</w>}；
+    \item \texttt{e+at}（来自 eat）或者 \texttt{mat+e}（来自 mate）二选一被选出。
+\end{enumerate}
+五次合并后，常见整词如 \texttt{cat</w>}, \texttt{mat} 已经成为单 token，
+而 \texttt{mate}、\texttt{mats} 之类则被表达成 2--3 个子词的组合。
+精确顺序取决于实现的 tie-breaking 规则，但\textbf{大方向一定是“先合并最频繁的对”}。
+\end{example}
+
+\subsubsection{推理阶段：按合并表切新词}
+
+\begin{mathbox}{BPE 推理（编码）}
+对一个新词 $w$：
+\begin{enumerate}
+    \item 先把它切成字符序列（带词尾标记）；
+    \item 在当前序列上，找出\textbf{所有可能的相邻合并}，
+          其中“可能”指对应的规则在合并表 $M$ 中存在；
+    \item 选\textbf{合并表里位置最靠前}的那条规则（位置越靠前 = 训练时越早被合并 = 越频繁），应用它；
+    \item 重复 2--3 步，直到没有任何可应用的规则为止；
+    \item 剩下的符号序列就是该词的 BPE 子词切分。
+\end{enumerate}
+\end{mathbox}
+
+\begin{intuitionblock}[关键：合并表是\emph{有序}的]
+训练时第 1 条规则学出来的 pair 一定比第 100 条更频繁。
+推理时按这个顺序贪心地合并，相当于优先把“常见整块”凑出来。
+所以同一个词在不同位置只会被切成同一种结果，BPE 的编码是\textbf{确定性}的。
+\end{intuitionblock}
+
+\begin{example}[已见词 vs.\ 未见词]
+假设训练后合并表里靠前的几条是
+$\texttt{a+t}, \texttt{m+at}, \texttt{at+</w>}, \texttt{c+at</w>}, \texttt{e+at}$。
+\begin{itemize}
+    \item 输入 \texttt{cat}：字符化为 \texttt{c\,a\,t\,</w>}
+          $\to$ 合并 \texttt{at} $\to$ \texttt{c\,at\,</w>}
+          $\to$ 合并 \texttt{at</w>} $\to$ \texttt{c\,at</w>}
+          $\to$ 合并 \texttt{cat</w>} $\to$ 单 token \texttt{cat</w>}。\\
+          \emph{常见词 = 一个 token。}
+    \item 输入 \texttt{matador}（训练时没见过）：可能的子词切分是
+          \texttt{mat\,a\,d\,o\,r\,</w>} —— \texttt{mat} 来自合并表，
+          后面只能停在字符级。\emph{罕见词 = 一小串子词，但仍然没有 \texttt{<unk>}。}
+\end{itemize}
+\end{example}
+
+\subsection{一些值得知道的工程细节}
+
+\begin{engbox}[实现家族]
+\begin{itemize}
+    \item \textbf{原始 BPE}（subword-nmt）：依赖语言级别的预分词（按空格切词），
+          在每个词内部跑 BPE，使用 \texttt{</w>} 标记词尾。
+    \item \textbf{SentencePiece}：把空格也当成普通符号 \texttt{\_}（U+2581），
+          \emph{不依赖任何语言相关的预分词}，因此天然支持中文/日文这种没有空格的语言。
+          GPT-2/3、LLaMA、Qwen、Gemma 等大模型基本都用 SentencePiece 风格的 BPE。
+    \item \textbf{YouTokenToMe / tiktoken / tokenizers (HF)}：对训练 / 编码做了大量工程优化，
+          编码速度可以到数十 MB/s。
+\end{itemize}
+\end{engbox}
+
+\begin{remark}[词表大小的经验值]
+小任务的 BPE 词表通常 $4\text{k}\!\sim\!16\text{k}$；
+NMT 经典设置 $32\text{k}$；
+现代大模型 $50\text{k}\!\sim\!200\text{k}$（多语言往大走）。
+词表越大，平均序列越短，但 embedding 矩阵越占显存。
+\end{remark}
+
+\begin{remark}[同家族的近亲]
+\begin{itemize}
+    \item \textbf{WordPiece}（BERT）：思路非常像 BPE，但选择合并对的准则不是“频率最高”，
+          而是\emph{使语言模型似然增加最多}。
+    \item \textbf{Unigram LM}（SentencePiece 默认选项之一）：
+          反过来——先放一个大词表，再用 EM 慢慢删除“最没用”的子词。
+    \item \textbf{BPE-dropout}：训练时以一定概率\emph{跳过某些合并}，
+          于是同一个词会被随机切成多种合理子词序列，相当于一种数据增强，对低资源任务很有用。
+\end{itemize}
+\end{remark}
+
+\subsection{这一章真正该记住的}
+
+\begin{keypointblock}[Take-aways]
+\begin{enumerate}
+    \item 神经模型词表 $V$ 是固定的，词级切分必然遇到 OOV $\to$ \texttt{<unk>}，对生成任务尤其致命。
+    \item 字符级永远没有 OOV，但序列太长、语义被打散；\textbf{子词是粒度上的折中}。
+    \item BPE 的本质是一张\textbf{有序的合并表}：训练阶段按“相邻对频率最高”不断合并，逐条学出来。
+    \item 推理阶段按这张表\textbf{从前往后贪心}地把字符序列合并起来；常见词收敛成一个 token，罕见词留成几段。
+    \item 几乎所有现代 LLM 用的 tokenizer 都是 BPE 或它的近亲（WordPiece / Unigram LM），
+          理解 BPE 就理解了它们 80\% 的行为。
+\end{enumerate}
+\end{keypointblock}

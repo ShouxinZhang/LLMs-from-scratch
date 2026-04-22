@@ -1,0 +1,38 @@
+\documentclass[11pt,a4paper]{ctexart}
+
+\input{src/preamble.tex}
+
+\title{Seq2seq 与 Attention\\\large 对照 Lena Voita NLP 课程的零基础精读}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+本文是对 Lena Voita 的 NLP 课程章节
+\textit{Sequence to Sequence (seq2seq) and Attention} 的零基础中文精读。
+按原文目录顺序，把每一节都拆开重讲：
+先抛出\emph{背景问题}，再给\emph{朴素直觉}，
+然后写成\emph{数学表达}，最后给出\emph{代码 / 工程对应}。
+读者只需要会基本的线性代数和 softmax 即可入门。
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\input{src/ch01-basics.tex}
+\input{src/ch02-attention.tex}
+\input{src/ch03-transformer.tex}
+\input{src/ch04-bpe.tex}
+\input{src/ch05-analysis.tex}
+
+\section*{致谢与原文}
+\addcontentsline{toc}{section}{致谢与原文}
+本文所有图示思路、公式与例子来源于
+Lena Voita 的公开课程页面：
+\url{https://lena-voita.github.io/nlp_course/seq2seq_and_attention.html}。
+本中文讲义只是按零基础读者的视角做了重写与展开，
+以便把原页面的「先看图、再看公式」体验补回到纯文本场景。
+
+\end{document}

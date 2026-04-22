@@ -1,0 +1,355 @@
+\section{序列到序列基础 (Sequence to Sequence Basics)}
+\label{ch:seq2seq-basics}
+
+\subsection{章节定位与最该问的几个问题}
+
+很多任务的输入和输出都是\emph{长度可变}的序列：把一句英文翻译成中文、把一段长文压缩成摘要、把一段
+Python 代码翻译成等价的 C++、甚至把一张图片描述成一句话——这些都属于
+\emph{序列到序列} (sequence to sequence, seq2seq) 任务。它们共享同一个抽象：给定源序列
+$\vect{x} = (x_1, \dots, x_S)$，要生成目标序列 $\vect{y} = (y_1, \dots, y_T)$，而 $S$ 和 $T$
+通常\emph{不相等}、也不预先固定。
+
+\begin{problemblock}
+在正式进入公式之前，先把本章想回答的几个朴素问题列出来。读完这一章你应该可以回答：
+\begin{enumerate}
+    \item Encoder 和 decoder 分别是干什么的？为什么要拆成两块？
+    \item “条件语言模型” (conditional language model, CLM) 跟普通的语言模型差在哪？
+    \item 训练时为什么用\emph{交叉熵}损失？它和最大似然是同一件事吗？
+    \item 训练时 decoder 看到的“上一个词”到底是真值还是模型自己的预测？为什么这么做？
+    \item 推理 (inference) 时为什么 \emph{greedy} 不够，要用 \emph{beam search}？
+    \item Beam 越大就越好吗？
+\end{enumerate}
+\end{problemblock}
+
+本章只覆盖最朴素的 seq2seq 框架（两个 RNN 之间用一个固定向量传话）。这个框架有一个明显的短板：
+信息全靠一个固定向量\emph{瓶颈}，长句子会“记不住”。第二章引入的 \textbf{attention} 正是为了
+解决这个瓶颈。所以请把这一章当成“为什么我们后面非得有 attention 不可”的铺垫。
+
+\subsection{Encoder–Decoder 框架}
+\label{sec:encdec}
+
+\begin{intuitionblock}
+最朴素的直觉：既然输入输出都是序列，而且通常\emph{长度不同}，那就分两步走。
+\begin{itemize}
+    \item \textbf{Encoder}（编码器）：把源序列 $\vect{x}$ \emph{读完}，压缩成某种“它到底在说什么”
+          的内部表示。
+    \item \textbf{Decoder}（解码器）：拿到这个表示，\emph{一个词一个词地写出} 目标序列 $\vect{y}$。
+\end{itemize}
+\end{intuitionblock}
+
+为什么这种“先读后写”的拆分如此自然？
+\begin{itemize}
+    \item 输入和输出长度通常不同，无法用单一前馈网络一一对应。
+    \item 在写第一个目标词之前，最好已经看完整个源句——否则连主语是谁都还不知道。
+    \item 拆开之后，encoder 和 decoder 可以使用\emph{不同}的网络结构（RNN、CNN、Transformer
+          都可以），便于实验和组合。
+\end{itemize}
+
+\begin{remark}
+此后所有更复杂的模型——加了 attention 的 RNN、Transformer、甚至现代 LLM 中的
+encoder-only / decoder-only 变体——都没有抛弃这个骨架，而只是在改“encoder 怎么编”、
+“decoder 怎么用编码出来的东西”这两件事。
+\end{remark}
+
+\medskip
+下面这张极简的“三盒图”足够你在脑子里画：
+
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.4cm, minimum height=1cm, align=center},
+    arr/.style={-{Latex}, thick}
+]
+    \node[box, fill=blue!8]   (enc) at (0,0)   {Encoder \\ (读 $\vect{x}$)};
+    \node[box, fill=purple!8] (rep) at (4.2,0) {内部表示 \\ $\vect{h}$};
+    \node[box, fill=green!8]  (dec) at (8.4,0) {Decoder \\ (写 $\vect{y}$)};
+    \draw[arr] (enc) -- (rep);
+    \draw[arr] (rep) -- (dec);
+    \node[below=0.05cm of enc] {\small 源序列 $\vect{x}$};
+    \node[below=0.05cm of dec] {\small 目标序列 $\vect{y}$};
+\end{tikzpicture}
+\end{center}
+
+\subsection{条件语言模型 (Conditional Language Model)}
+\label{sec:clm}
+
+\begin{intuitionblock}
+普通的\emph{语言模型} (LM) 干的事是：在没有任何外部输入的情况下，告诉你下一个词最可能是什么。
+\emph{条件}语言模型多了一个“条件”——多给它一个 $\vect{x}$，它再预测下一个词。Seq2seq 的 decoder
+就是这样一个条件语言模型，条件是源序列。
+\end{intuitionblock}
+
+\subsubsection{从 LM 到 CLM 的形式化}
+
+普通语言模型把一句话的概率拆成左到右的链式乘积：
+\[
+    p(\vect{y}) \;=\; \prod_{t=1}^{T} p(y_t \mid y_{<t}),
+    \qquad y_{<t} := (y_1, \dots, y_{t-1}).
+\]
+Seq2seq 模型做的事完全一样，只是\emph{每一步都额外条件}于源序列 $\vect{x}$：
+\begin{mathbox}{条件语言模型 (CLM) 的核心公式}
+\[
+    \boxed{\;
+    p(\vect{y} \mid \vect{x}) \;=\; \prod_{t=1}^{T} p(y_t \mid y_{<t},\, \vect{x})
+    \;}
+\]
+\end{mathbox}
+
+也就是说：\emph{seq2seq = 条件语言模型}。它和普通 LM 在结构上几乎一样，差别只在“写每个词的时候，
+模型可以额外看一眼 $\vect{x}$”。
+
+\subsubsection{三步流水线}
+
+不论 encoder/decoder 内部用什么神经网络，每一步生成 $y_t$ 都是同样三步：
+\begin{enumerate}
+    \item \textbf{喂入}：把源序列 $\vect{x}$ 和已生成的前缀 $y_{<t}$ 一起送入网络。
+    \item \textbf{得到表示}：网络给出一个 $d$ 维向量 $\vect{h}_t \in \mathbb{R}^d$，
+          代表“此刻应该写什么样的词”。
+    \item \textbf{打分并归一化}：经过一个线性层 $W \in \mathbb{R}^{|V|\times d}$ 把
+          $\vect{h}_t$ 映射到词表 $V$ 上，再用 softmax 得到下一个词的分布：
+          \[
+              p(y_t \mid y_{<t}, \vect{x})
+              \;=\; \softmax(W \vect{h}_t)_{y_t}.
+          \]
+\end{enumerate}
+
+\begin{remark}
+$\vect{x}$ 不必是文本。把图像先用 CNN 编码成向量，再让 decoder 写出一段描述，就是
+\emph{image captioning}。所以 CLM 比“文本到文本的 seq2seq”更广泛——它是一种通用模板。
+\end{remark}
+
+\begin{engbox}
+代码骨架（伪代码）：
+\begin{lstlisting}
+h_src = encoder(x)                  # 源序列的表示
+y_prev = [BOS]
+for t in range(T_max):
+    h_t   = decoder(y_prev, h_src)  # 第 t 步的隐表示
+    logits = W @ h_t                # 线性投影到 |V|
+    probs  = softmax(logits)        # 下一个词的分布
+    y_t    = sample_or_argmax(probs)
+    y_prev.append(y_t)
+    if y_t == EOS: break
+\end{lstlisting}
+\end{engbox}
+
+\subsection{最简单的模型：两个 RNN/LSTM}
+\label{sec:two-rnns}
+
+\begin{intuitionblock}
+既然要“读完 $\vect{x}$ 再写 $\vect{y}$”，最朴素的实现就是：
+用一个 RNN 把源序列从左到右扫一遍，把它的\emph{最后一个隐藏状态}当成“整句话的总结”，
+再把这个状态作为另一个 RNN 的初始状态，让它一个词一个词写出目标序列。
+\end{intuitionblock}
+
+\subsubsection{形式化}
+
+设 encoder 的隐状态序列为 $\vect{h}_1^{\text{enc}}, \dots, \vect{h}_S^{\text{enc}}$，
+decoder 的隐状态序列为 $\vect{h}_1^{\text{dec}}, \dots, \vect{h}_T^{\text{dec}}$。
+最朴素的 seq2seq 模型只用一根细线把两者连起来：
+\begin{align}
+    \vect{h}_s^{\text{enc}} &= \mathrm{RNN}_{\text{enc}}(\vect{h}_{s-1}^{\text{enc}},\, x_s),
+        & s &= 1, \dots, S, \\
+    \vect{h}_0^{\text{dec}} &= \vect{h}_S^{\text{enc}}, \label{eq:bottleneck}\\
+    \vect{h}_t^{\text{dec}} &= \mathrm{RNN}_{\text{dec}}(\vect{h}_{t-1}^{\text{dec}},\, y_{t-1}),
+        & t &= 1, \dots, T.
+\end{align}
+关键就在式 \eqref{eq:bottleneck}：源句的全部信息——长度 $S$ 任意——都被压成
+\emph{一个固定维度的向量} $\vect{h}_S^{\text{enc}}$ 传给 decoder。
+
+\begin{keypointblock}
+这一根细线就是\emph{固定向量瓶颈} (fixed-size bottleneck)。它在短句上工作良好，
+但句子越长，单个向量越塞不下，翻译质量会随句长显著下降。\textbf{这正是第二章 attention 要解决的问题。}
+\end{keypointblock}
+
+\subsubsection{两个值得记住的历史细节}
+
+\begin{remark}[Sutskever 等人 2014]
+最早把 “两个 LSTM 堆起来做翻译” 这套打通的工作是 Sutskever, Vinyals, Le 在 2014 年的
+\emph{Sequence to Sequence Learning with Neural Networks}。它在 WMT 英法翻译上首次让
+纯神经方法逼近当时主流的统计机器翻译系统。
+\end{remark}
+
+\begin{remark}[反转源句的小技巧]
+他们还报告了一个反直觉但很有效的 trick：把源句\emph{倒着}喂给 encoder。这样源句开头的词
+（往往对应目标句开头的词）和 decoder 第一步在时间上更接近，梯度路径更短，优化更顺利。
+这个技巧本身在 attention 出现后基本被遗忘，但它揭示了瓶颈结构对“距离”非常敏感。
+\end{remark}
+
+\subsection{训练：交叉熵损失 (Cross-Entropy Loss)}
+\label{sec:ce-loss}
+
+\begin{problemblock}
+模型每一步吐出来的是一个长度为 $|V|$ 的概率分布 $p(y_t \mid y_{<t}, \vect{x})$。
+而真实的下一个词 $y_t^*$ 只是\emph{词表上的某一个}。怎么把“分布”和“某个词”比出一个损失？
+\end{problemblock}
+
+\subsubsection{每一步：把真值看作 one-hot}
+
+把真实的下一个词 $y_t^*$ 写成 one-hot 向量 $\vect{e}_{y_t^*} \in \{0,1\}^{|V|}$：
+只有第 $y_t^*$ 个分量是 1，其余为 0。模型的预测分布记为
+$\vect{p}_t \in \Delta^{|V|-1}$。两者之间的\emph{交叉熵}定义为
+\[
+    H(\vect{e}_{y_t^*},\, \vect{p}_t)
+    \;=\; -\sum_{w \in V} \vect{e}_{y_t^*}[w] \,\log \vect{p}_t[w]
+    \;=\; -\log p(y_t^* \mid y_{<t}, \vect{x}).
+\]
+因为 one-hot 只有一个位置非零，整个求和\emph{坍缩成单项}：就是模型给真值那个词的负对数概率。
+
+\subsubsection{整个序列：把每步加起来}
+
+\begin{mathbox}{Seq2seq 的训练损失}
+\[
+    \mathcal{L}(\vect{x}, \vect{y}^*)
+    \;=\; -\sum_{t=1}^{T} \log p(y_t^* \mid y_{<t}^*,\, \vect{x}).
+\]
+在一个 mini-batch 上，对所有句子再取平均（或先除以各自长度后再取平均）。
+\end{mathbox}
+
+\subsubsection{为什么是这个损失？}
+
+\begin{theorem}[交叉熵 = 最大似然 = 最小 KL]
+最小化上面这个交叉熵损失，等价于在训练数据上做\emph{最大似然估计}：
+\[
+    \min_{\theta}\; -\sum_{(\vect{x},\vect{y}^*)} \log p_\theta(\vect{y}^* \mid \vect{x})
+    \;\Longleftrightarrow\;
+    \max_{\theta}\; \prod_{(\vect{x},\vect{y}^*)} p_\theta(\vect{y}^* \mid \vect{x}),
+\]
+也等价于让模型分布 $p_\theta(\cdot \mid \vect{x})$ 在 KL 意义下尽量\emph{逼近}数据经验分布
+$\hat{p}_{\text{data}}(\cdot \mid \vect{x})$。
+\end{theorem}
+
+\subsubsection{Teacher Forcing 与暴露偏差}
+
+训练时还有一个\emph{常常被新手忽略}的细节：在算第 $t$ 步的损失时，decoder 的输入“上一个词”
+是用真值 $y_{t-1}^*$，\emph{不是}模型自己上一步预测出来的词。这种做法叫做
+\textbf{teacher forcing}（教师强迫）。
+
+\begin{itemize}
+    \item \textbf{为什么这么做？} 训练初期模型预测几乎全错，如果一直拿自己的错答案当输入，
+          后面所有时间步都建立在错误前缀上，损失曲面非常崎岖、根本学不动。用真值前缀可以让
+          每一步都在“合理”的上下文里学习，训练快很多。
+    \item \textbf{副作用：暴露偏差 (exposure bias)。} 推理时没有真值可用，模型只能看自己之前
+          的预测；而训练时它从来没见过自己的错误前缀。这种\emph{训练-推理不一致}会让长序列
+          生成时错误累积。后续课程里 scheduled sampling、minimum risk training、RL 微调
+          等都是为了缓解这件事，但本章先放一放。
+\end{itemize}
+
+\begin{engbox}
+训练循环骨架（伪代码）：
+\begin{lstlisting}
+h_src = encoder(x)
+h_dec = h_src                          # 瓶颈传话
+loss = 0
+for t in range(1, T+1):
+    h_dec = decoder_step(h_dec, y_star[t-1])   # teacher forcing
+    logits = W @ h_dec
+    loss  += cross_entropy(logits, y_star[t])  # = -log p(y*_t | ...)
+loss.backward()
+\end{lstlisting}
+\end{engbox}
+
+\subsection{推理：贪心解码与 Beam Search}
+\label{sec:decoding}
+
+\begin{problemblock}
+训练好之后，给定一个新的 $\vect{x}$，我们想要的是\emph{最可能}的目标序列：
+\[
+    \vect{y}^{\star} \;=\; \arg\max_{\vect{y}} \; p(\vect{y} \mid \vect{x}).
+\]
+但词表大小 $|V|$ 通常上万，目标长度可达几十——可能的 $\vect{y}$ 有 $|V|^T$ 种，
+\emph{穷举绝对不可行}。怎么办？
+\end{problemblock}
+
+\subsubsection{方案 A：贪心解码 (Greedy Decoding)}
+
+\begin{intuitionblock}
+最朴素的近似：每一步都挑当前\emph{条件概率最大}的那个词，写下来，作为下一步的输入，反复直到 EOS。
+\end{intuitionblock}
+\[
+    \hat{y}_t \;=\; \arg\max_{w \in V} \; p(w \mid \hat{y}_{<t},\, \vect{x}).
+\]
+
+优点是快、实现极简单；缺点是\emph{局部最优不等于全局最优}。某一步选了概率第一的词，
+可能让后续所有步骤都陷入低概率区域；如果当时选了概率第二的词，整句话反而更可能。
+
+\begin{example}
+英译中：源句 \emph{``I saw her duck.''}。Greedy 在第三步可能锁定“鸭子”，导致整句翻成
+“我看见她的鸭子”；但若回退一步把 \emph{duck} 当动词，整句应是“我看见她躲开”——
+后者作为整句的概率更高，却被 greedy 永远错过。
+\end{example}
+
+\subsubsection{方案 B：Beam Search}
+
+\begin{intuitionblock}
+不要在每一步只留一个候选，而是\emph{始终保留 $N$ 个最有希望的部分序列}（叫 beam）。
+每一步把这 $N$ 个候选各扩展 $|V|$ 种延续，得到 $N\cdot|V|$ 个新候选，
+\emph{再}按累计 log 概率挑出前 $N$ 个，进入下一步。
+\end{intuitionblock}
+
+\begin{mathbox}{Beam Search 的打分}
+对一条部分假设 $\vect{y}_{1:t}$，累计得分是 log 概率之和：
+\[
+    \score(\vect{y}_{1:t} \mid \vect{x})
+    \;=\; \sum_{i=1}^{t} \log p(y_i \mid y_{<i},\, \vect{x}).
+\]
+每步保留 $\score$ 最高的 $N$ 条。$N$ 称为 \emph{beam size}（束宽），机器翻译里常取
+$N = 4 \sim 10$。
+\end{mathbox}
+
+\begin{itemize}
+    \item $N = 1$ 时退化为 greedy。
+    \item $N \to \infty$ 时趋近于全局最优搜索（穷举）。
+\end{itemize}
+
+\subsubsection{Beam 越大就越好吗？——并不}
+
+经验上，beam size 不是越大越好：太大反而会让翻译质量\emph{下降}。常见的解释有两类：
+
+\begin{itemize}
+    \item \textbf{长度偏置 (length bias)。} log 概率是负数，每加一个词都让总分变小，
+          所以 beam 越大、越倾向于挑\emph{更短}的句子，可能会丢掉应有的内容。
+          常用的修补是\emph{长度归一化} (length normalization)：用
+          $\score(\vect{y}_{1:t}) / t^{\alpha}$（$\alpha \in [0.6, 1]$）作为打分，
+          抵消长度对累计 log 概率的拉低。
+    \item \textbf{模型本身的过自信。} 训练时只见过真实序列，模型把概率质量过度集中在某些
+          “典型”句子上；当 beam 足够大时，搜索算法会“恰好”找到一些极短或退化的高分
+          序列（例如直接输出 EOS）。这是模型问题，不是搜索问题。
+\end{itemize}
+
+\begin{engbox}
+Beam search 的最小骨架（伪代码）：
+\begin{lstlisting}
+beams = [(["BOS"], 0.0)]               # (前缀, 累计 log 概率)
+for t in range(T_max):
+    candidates = []
+    for prefix, score in beams:
+        if prefix[-1] == "EOS":
+            candidates.append((prefix, score))
+            continue
+        logp = log_softmax(decoder_step(prefix, x))   # 形状 (|V|,)
+        for w, lp in topk(logp, k=N):                 # 只看每条的 top-N 延续
+            candidates.append((prefix + [w], score + lp))
+    beams = topk_by_score(candidates, k=N)            # 全局再挑前 N
+return best_by_length_normalized_score(beams)
+\end{lstlisting}
+\end{engbox}
+
+\subsection{这一章真正该记住的}
+
+\begin{keypointblock}
+\begin{enumerate}
+    \item \textbf{Seq2seq = encoder + decoder。} 一边读源序列、一边写目标序列；后续所有更复杂的
+          模型都没有抛弃这个骨架，只是在改两边怎么实现、怎么连接。
+    \item \textbf{Decoder 是一个条件语言模型}：
+          $p(\vect{y} \mid \vect{x}) = \prod_t p(y_t \mid y_{<t}, \vect{x})$。
+          它和普通 LM 唯一的区别就是\emph{额外条件于 $\vect{x}$}。
+    \item \textbf{最朴素实现 = 两个 RNN + 一个固定向量瓶颈。} 这个瓶颈对长句不友好，
+          正是第二章 attention 要解决的痛点。
+    \item \textbf{训练用 token 级交叉熵}，等价于对训练序列做最大似然。Decoder 输入用真值前缀
+          (\emph{teacher forcing})，会带来训练-推理不一致 (\emph{exposure bias})。
+    \item \textbf{推理是搜索 $\arg\max_{\vect{y}} p(\vect{y} \mid \vect{x})$ 的近似。}
+          Greedy 局部最优、Beam search 用宽度为 $N$ 的近似全局搜索，常用 $N \approx 4\text{--}10$。
+    \item \textbf{Beam 不是越大越好}，原因是长度偏置和模型过自信；
+          长度归一化是最常见的实用修补。
+\end{enumerate}
+\end{keypointblock}

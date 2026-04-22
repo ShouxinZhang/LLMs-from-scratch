@@ -1,0 +1,263 @@
+\section{Attention：让解码器自己去原文里取信息}
+\label{ch:attention}
+
+\subsection{章节定位 + 零基础该问的问题}
+
+上一章我们看到，经典的 seq2seq 把整句源语言压成一个向量 $\vect{h}^{\mathrm{enc}}_m$，再交给解码器。这一章要回答的问题是：当这个“压缩到一个向量”的方案吃力的时候，模型应该怎么改？答案就是 \emph{attention}。它是 Transformer 之前 NMT 时代最重要的进展，也是 self-attention 的直接祖先。
+
+\begin{problemblock}[一上来该问的几个问题]
+带着这些问题往下读，比一上来就背公式更划算：
+\begin{enumerate}
+  \item RNN 编码器到底\emph{卡在哪}？为什么句子一长就翻不动？
+  \item Attention 的输入是什么、输出是什么？它放在 seq2seq 的哪个位置？
+  \item Attention score 函数有几种，互相差在哪？
+  \item Bahdanau attention 和 Luong attention 是同一个东西吗？哪里不一样？
+  \item 学出来的 attention 权重，为什么大家都说它“像对齐”？这有什么用？
+\end{enumerate}
+\end{problemblock}
+
+\subsection{固定编码器表示的瓶颈}
+\label{sec:bottleneck}
+
+\subsubsection{背景问题：一个向量装不下整句话}
+
+\begin{problemblock}
+经典 seq2seq 的编码器读完全句之后，吐出一个固定维度的向量 $\vect{h}^{\mathrm{enc}}_m \in \R^{d}$，把它当作整句的“意思”交给解码器。但是：
+\begin{itemize}
+  \item 句子是 5 个词还是 50 个词，最后给解码器的都是同一个 $d$ 维向量。
+  \item 解码器在生成第 1 个目标词时关心的源信息，和生成第 10 个目标词时关心的源信息，\emph{显然不一样}，但它每一步看到的“源信息”都是同一个向量。
+\end{itemize}
+\end{problemblock}
+
+\subsubsection{朴素直觉：把宇宙压进 512 个数}
+
+\begin{intuitionblock}
+Lena 在博客里有一个非常形象的比喻：让编码器把整句话压成一个固定向量，就像让你\emph{把整个宇宙压进 512 个数}里再交出去。短句还行，长句就一定会丢信息。
+
+更糟的是：解码器每一步都要从同一个“宇宙摘要”里翻出当前需要的那一小块信息——它根本没机会“回头再看一眼原文”。
+\end{intuitionblock}
+
+\subsubsection{数学表达：瓶颈到底在哪一项}
+
+\begin{mathbox}{固定编码器表示的损失}
+经典 seq2seq 的解码概率分解为
+\begin{equation}
+p(\vect{y}\mid \vect{x}) \;=\; \prod_{t=1}^{n} p\!\left(y_t \mid y_{<t},\,\vect{h}^{\mathrm{enc}}_m\right).
+\end{equation}
+注意右边条件里的 $\vect{h}^{\mathrm{enc}}_m$ 与 $t$ 无关。也就是说，模型被强制要求：
+\begin{equation}
+\text{对所有解码步 } t,\ \text{源端信息都用\emph{同一个}向量 }\vect{h}^{\mathrm{enc}}_m\text{ 表达。}
+\end{equation}
+当 $m$ 增大时，这个向量必须承担越来越多内容，信息被覆盖、被冲掉。
+\end{mathbox}
+
+\begin{remark}
+经验上，普通 seq2seq 在源句长度超过 20--30 之后 BLEU 会明显下降；引入 attention 之后这一掉点会被显著拉平。这就是 Bahdanau 等人 2014 年那篇论文最早展示的结果。
+\end{remark}
+
+\subsection{Attention 的高层视角}
+\label{sec:attn-overview}
+
+\subsubsection{背景问题：能不能让解码器“回头看”？}
+
+\begin{problemblock}
+既然“压成一个向量”是瓶颈，那很自然的想法是：
+\begin{itemize}
+  \item 让编码器把每个时刻的隐状态 $\vect{s}_1,\ldots,\vect{s}_m$ 都\emph{留下来}，不要扔。
+  \item 解码器在第 $t$ 步，根据当前自己的状态 $\vect{h}_t$，自己决定该\emph{重点看}源端的哪些位置。
+\end{itemize}
+关键约束是：这个“决定看哪里”的过程必须\emph{可微}，否则没法用反向传播一起训练。
+\end{problemblock}
+
+\subsubsection{朴素直觉：加权查表}
+
+\begin{intuitionblock}
+把编码器输出 $\vect{s}_1,\ldots,\vect{s}_m$ 想成一张“源端记忆表”。解码器每一步做的事就是一次\emph{软查表}：
+\begin{enumerate}
+  \item 拿出一个“查询” $\vect{h}_t$（解码器当前状态）。
+  \item 对每条记忆 $\vect{s}_k$ 打一个相关性分数 $e_{tk}$。
+  \item 把分数过一个 softmax 得到“看每条记忆的比例” $\alpha_{tk}$。
+  \item 按比例把所有记忆加权求和，得到这一步的“context” $\vect{c}_t$。
+\end{enumerate}
+注意整个过程没有 argmax、没有硬选择，所以\emph{处处可导}，可以端到端训练。模型自己会学出“在第 $t$ 步该看哪里”，不需要我们提供人工对齐。
+\end{intuitionblock}
+
+\subsubsection{数学表达：attention 的三步公式}
+
+\begin{mathbox}{解码第 $t$ 步的 attention}
+设编码器输出为 $\vect{s}_1,\ldots,\vect{s}_m \in \R^{d_s}$，解码器当前状态为 $\vect{h}_t \in \R^{d_h}$。
+\begin{align}
+e_{tk} &\;=\; \score(\vect{h}_t, \vect{s}_k), \qquad k=1,\ldots,m, \label{eq:attn-score}\\
+\alpha_{t\cdot} &\;=\; \softmax(e_{t\cdot}) \;\Longleftrightarrow\; \alpha_{tk} \;=\; \frac{\exp(e_{tk})}{\sum_{j=1}^{m}\exp(e_{tj})}, \label{eq:attn-softmax}\\
+\vect{c}_t &\;=\; \sum_{k=1}^{m} \alpha_{tk}\,\vect{s}_k. \label{eq:attn-context}
+\end{align}
+得到的 $\vect{c}_t$ 就是“给第 $t$ 步用的源端摘要”，它会被喂回解码器（拼接到输入、或拼接到隐状态、或参与最终输出层）。
+\end{mathbox}
+
+\begin{definition}[Attention 权重]
+向量 $\boldsymbol{\alpha}_{t\cdot}=(\alpha_{t1},\ldots,\alpha_{tm})$ 满足 $\alpha_{tk}\ge 0$ 且 $\sum_k \alpha_{tk}=1$，称为解码第 $t$ 步对源端的 \emph{attention 权重}。它描述了“第 $t$ 步用了源端哪些位置、各占多少”。
+\end{definition}
+
+\begin{engbox}
+工程上要记住三件事：
+\begin{itemize}
+  \item 编码器需要把\emph{所有时刻}的 $\vect{s}_k$ 都缓存下来（一个 $m\times d_s$ 矩阵），而不是只留最后一个。
+  \item 每个解码步要做一次 $O(m)$ 的打分 + softmax + 加权和；总成本相对原 seq2seq 增加了一项 $O(n m)$。
+  \item $\vect{c}_t$ 怎么“喂回”解码器，是 Bahdanau 与 Luong 两派的主要差异（见 \S\ref{sec:bahdanau-luong}）。
+\end{itemize}
+\end{engbox}
+
+\subsection{怎么算 attention score？}
+\label{sec:score}
+
+\subsubsection{背景问题：一个 score 函数能管所有情况吗}
+
+\begin{problemblock}
+公式 \eqref{eq:attn-score} 里的 $\score(\vect{h}_t,\vect{s}_k)$ 只是一个抽象记号。它要满足两点：
+\begin{itemize}
+  \item 输入两个向量，输出一个标量分数；
+  \item 是 $\vect{h}_t$ 和 $\vect{s}_k$ 的可微函数。
+\end{itemize}
+满足这两点的函数有一堆，历史上常用的就是下面三种。
+\end{problemblock}
+
+\subsubsection{朴素直觉：从“纯几何”到“多塞一层 MLP”}
+
+\begin{intuitionblock}
+\begin{itemize}
+  \item \textbf{点积}：直接看两个向量的余弦相似度（按模长缩放就成了后来的 scaled dot-product）。最便宜，但要求 $\vect{h}_t$ 和 $\vect{s}_k$ 在\emph{同一空间}里有意义。
+  \item \textbf{双线性 (bilinear)}：在中间塞一个矩阵 $\vect{W}$，相当于先把其中一个向量投影到对方的空间。$\vect{h}_t$ 和 $\vect{s}_k$ 维度不同也能用。
+  \item \textbf{加性 (additive / MLP)}：把两个向量先各自线性变换、加起来，再过 $\tanh$，再投到一个标量。最“能学”，但参数和算力都最贵。
+\end{itemize}
+\end{intuitionblock}
+
+\subsubsection{数学表达：三种常见 score 函数}
+
+\begin{mathbox}{三种 attention score}
+\begin{align}
+\textbf{点积 (dot)}: \quad &\score(\vect{h},\vect{s}) \;=\; \vect{h}^{\top}\vect{s}, \label{eq:score-dot}\\
+\textbf{双线性 (Luong)}: \quad &\score(\vect{h},\vect{s}) \;=\; \vect{h}^{\top}\vect{W}\vect{s}, \label{eq:score-bilinear}\\
+\textbf{加性 (Bahdanau)}: \quad &\score(\vect{h},\vect{s}) \;=\; \vect{v}^{\top}\tanh\!\left(\vect{W}_1 \vect{h} + \vect{W}_2 \vect{s}\right). \label{eq:score-additive}
+\end{align}
+其中 $\vect{W}\in\R^{d_h\times d_s}$，$\vect{W}_1\in\R^{d\times d_h}$，$\vect{W}_2\in\R^{d\times d_s}$，$\vect{v}\in\R^{d}$ 都是可学习参数。
+\end{mathbox}
+
+\begin{remark}[谁更好用]
+\begin{itemize}
+  \item \textbf{速度}：点积 $\gg$ 双线性 $>$ 加性。点积可以一次矩阵乘法批量算完，所以后来 Transformer 选了它。
+  \item \textbf{表达力}：加性最强（多了一层非线性），点积最弱。
+  \item \textbf{兼容性}：维度不一致时只能用双线性或加性。
+\end{itemize}
+\end{remark}
+
+\subsection{模型变体：Bahdanau vs Luong}
+\label{sec:bahdanau-luong}
+
+\subsubsection{背景问题：attention 应该插在解码器的哪一步}
+
+\begin{problemblock}
+有了 attention 模块以后，下一个问题是：
+\begin{itemize}
+  \item 解码器更新隐状态的\emph{之前}就先算 $\vect{c}_t$，把它和输入一起喂给 RNN？还是
+  \item 让 RNN 先正常更新出 $\vect{h}_t$，再用 $\vect{h}_t$ 去算 $\vect{c}_t$，最后把两者合起来出预测？
+\end{itemize}
+这就是 Bahdanau (2014) 和 Luong (2015) 两派的核心区别。
+\end{problemblock}
+
+\subsubsection{朴素直觉：时序对比}
+
+\begin{intuitionblock}
+两条时序线，一眼对比：
+\begin{itemize}
+  \item \textbf{Bahdanau}：$\vect{h}_{t-1}\ \longrightarrow\ \text{attention}\ \longrightarrow\ \vect{c}_t\ \longrightarrow\ \text{RNN 用 }(\vect{c}_t, y_{t-1})\text{ 算 }\vect{h}_t\ \longrightarrow\ \text{预测 }y_t$。\\ Attention 在“解码 RNN 一步”\emph{之前}发生。
+  \item \textbf{Luong}：$\vect{h}_{t-1}\ \longrightarrow\ \text{RNN 用 }y_{t-1}\text{ 算 }\vect{h}_t\ \longrightarrow\ \text{attention(}\vect{h}_t\text{)}\ \longrightarrow\ \vect{c}_t\ \longrightarrow\ \tilde{\vect{h}}_t = \tanh(\vect{W}[\vect{h}_t;\vect{c}_t])\ \longrightarrow\ \text{预测 }y_t$。\\ Attention 在“解码 RNN 一步”\emph{之后}发生。
+\end{itemize}
+\end{intuitionblock}
+
+\subsubsection{数学表达：两个版本的关键公式}
+
+\begin{mathbox}{Bahdanau attention（2014）}
+\begin{itemize}
+  \item 编码器是\emph{双向} RNN：$\vect{s}_k = [\overrightarrow{\vect{s}}_k;\overleftarrow{\vect{s}}_k]$。
+  \item Score 用加性：$e_{tk} = \vect{v}^{\top}\tanh(\vect{W}_1 \vect{h}_{t-1} + \vect{W}_2 \vect{s}_k)$。
+  \item 注意 query 是\emph{上一步}的 $\vect{h}_{t-1}$，先算 $\vect{c}_t$，再更新：
+\end{itemize}
+\begin{align}
+e_{tk} &= \vect{v}^{\top}\tanh(\vect{W}_1 \vect{h}_{t-1} + \vect{W}_2 \vect{s}_k),\\
+\alpha_{t\cdot} &= \softmax(e_{t\cdot}),\quad \vect{c}_t = \sum_k \alpha_{tk}\vect{s}_k,\\
+\vect{h}_t &= \mathrm{RNN}\!\left(\vect{h}_{t-1},\ [\vect{E}\, y_{t-1};\,\vect{c}_t]\right),\\
+p(y_t\mid y_{<t},\vect{x}) &= \softmax\!\left(\vect{W}_o[\vect{h}_t;\vect{c}_t;\vect{E}\,y_{t-1}]\right).
+\end{align}
+\end{mathbox}
+
+\begin{mathbox}{Luong attention（2015，global 版本）}
+\begin{itemize}
+  \item 编码器是\emph{单向} RNN（更简单）。
+  \item Score 用双线性：$e_{tk} = \vect{h}_t^{\top}\vect{W}\vect{s}_k$。
+  \item Query 是\emph{当前步}的 $\vect{h}_t$，先更新 RNN，再算 attention：
+\end{itemize}
+\begin{align}
+\vect{h}_t &= \mathrm{RNN}\!\left(\vect{h}_{t-1},\ \vect{E}\, y_{t-1}\right),\\
+e_{tk} &= \vect{h}_t^{\top}\vect{W}\vect{s}_k,\quad \alpha_{t\cdot}=\softmax(e_{t\cdot}),\quad \vect{c}_t=\sum_k \alpha_{tk}\vect{s}_k,\\
+\tilde{\vect{h}}_t &= \tanh\!\left(\vect{W}_c[\vect{h}_t;\vect{c}_t]\right),\\
+p(y_t\mid y_{<t},\vect{x}) &= \softmax\!\left(\vect{W}_o\,\tilde{\vect{h}}_t\right).
+\end{align}
+\end{mathbox}
+
+\begin{remark}
+Luong 还提出过一个 \emph{local attention} 版本，只在源端附近一个窗口里算 softmax。但工业界后来还是 global 版本+各种改进用得多。
+\end{remark}
+
+\begin{engbox}
+理解这两派的差异比记公式重要：
+\begin{itemize}
+  \item \textbf{时序}：Bahdanau 是“先看再走”，Luong 是“先走再看”。
+  \item \textbf{Score}：Bahdanau 用 MLP（参数最多、最能学）；Luong 默认用双线性（更轻）。
+  \item \textbf{编码器}：Bahdanau 双向（信息更全），Luong 单向（实现更简单）。
+  \item 这两个模型在 Transformer 出现前\emph{统治了}神经机器翻译，几乎所有后续 NMT 工程都是它们的变体。
+\end{itemize}
+\end{engbox}
+
+\subsection{Attention 学到了（近似的）对齐}
+\label{sec:alignment}
+
+\subsubsection{背景问题：这些 $\alpha_{tk}$ 真的有意义吗}
+
+\begin{problemblock}
+我们没有给模型任何“哪个目标词对应哪个源词”的标注，只是用最大似然让它去预测下一个目标词。可学完之后，把 $\alpha_{tk}$ 画成热力图，往往会看到：解码到目标位置 $t$ 时，权重恰好集中在源端那几个“正在被翻译”的词上。
+\end{problemblock}
+
+\subsubsection{朴素直觉：软对齐}
+
+\begin{intuitionblock}
+统计机器翻译时代，“对齐 (alignment)”是一个核心概念，要靠 IBM Model 1/2 等专门的算法去估。Attention 把这件事顺手做了：
+\begin{itemize}
+  \item 每个目标词 $y_t$ 对应一个源端的概率分布 $\boldsymbol{\alpha}_{t\cdot}$。
+  \item 这就是“软对齐”——不再是 hard 的“词 $i$ 对应词 $j$”，而是“词 $t$ 用了源端 30\% 的位置 $j_1$，60\% 的位置 $j_2$，\ldots”。
+\end{itemize}
+\end{intuitionblock}
+
+\subsubsection{从可解释性的角度看}
+
+\begin{remark}[Attention 作为归纳偏置]
+Bahdanau 那篇论文里展示的 attention 热力图，是深度学习历史上\emph{第一批}看起来很“可解释”的内部状态：
+\begin{itemize}
+  \item 它没有被强行训练成对齐，但自发地呈现出对齐的样子；
+  \item 这说明“对每一步只看相关的几条记忆”是一种\emph{有用}且\emph{自然}的归纳偏置；
+  \item 这一思想被 Transformer 推到极致：\emph{所有}信息流都通过 attention 完成。
+\end{itemize}
+不过要小心：后续研究（如 Jain \& Wallace 2019）也指出，attention 权重并不一定等于“真正的解释”。它\emph{看起来}像对齐，并不代表模型一定\emph{用}它做决策。
+\end{remark}
+
+\subsection{这一章真正该记住的}
+
+\begin{keypointblock}
+\begin{enumerate}
+  \item \textbf{病根}：经典 seq2seq 把整句源语言压成\emph{一个固定向量}；句子一长，就装不下。
+  \item \textbf{治法}：编码器保留所有时刻的状态 $\vect{s}_1,\ldots,\vect{s}_m$；解码器每一步对它们做\emph{加权查表}，权重由 softmax 给出。
+  \item \textbf{三步范式}：score $\to$ softmax $\to$ 加权和；这套流程全程可导，端到端训练，不需要人工对齐。
+  \item \textbf{Score 三选一}：点积（最快）、双线性（Luong）、加性 MLP（Bahdanau）；速度 vs 表达力的取舍。
+  \item \textbf{Bahdanau vs Luong}：核心差异是“attention 在 RNN 更新之前还是之后”，以及 score 函数和编码器方向；它们是 Transformer 之前 NMT 的两大支柱。
+  \item \textbf{学出来像对齐}：$\alpha_{tk}$ 自发呈现软对齐，是“attention 作为归纳偏置”的第一个直观证据；它直接为下一章的 self-attention 与 Transformer 铺好了路。
+\end{enumerate}
+\end{keypointblock}

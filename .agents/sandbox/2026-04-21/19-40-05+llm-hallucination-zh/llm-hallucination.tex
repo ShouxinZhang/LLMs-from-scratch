@@ -1,0 +1,474 @@
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usepackage{booktabs}
+\usepackage{array}
+\usetikzlibrary{arrows.meta,calc,positioning}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  urlcolor=blue!55!black
+}
+
+\setlist[enumerate]{itemsep=0.35em, topsep=0.45em}
+\setlist[itemize]{itemsep=0.35em, topsep=0.45em}
+
+\newtheorem{theorem}{命题}[section]
+\newtheorem{definition}[theorem]{定义}
+\newtheorem{example}[theorem]{例}
+\newtheorem{remark}[theorem]{备注}
+
+\tcbset{
+  commonbox/.style={
+    enhanced, breakable,
+    boxrule=0.8pt, arc=2mm,
+    left=1.4mm, right=1.4mm, top=1mm, bottom=1mm,
+    colback=white
+  }
+}
+
+\newtcolorbox{problemblock}{commonbox,colframe=BrickRed!65!black,colback=BrickRed!4,title=问题,fonttitle=\bfseries}
+\newtcolorbox{intuitionblock}{commonbox,colframe=RoyalBlue!70!black,colback=RoyalBlue!4,title=朴素直觉,fonttitle=\bfseries}
+\newtcolorbox{mathbox}[1]{commonbox,colframe=Purple!60!black,colback=Purple!4,title=#1,fonttitle=\bfseries}
+\newtcolorbox{engbox}{commonbox,colframe=ForestGreen!60!black,colback=ForestGreen!4,title=工程视角,fonttitle=\bfseries}
+\newtcolorbox{keypointblock}{commonbox,colframe=black!65,colback=black!3,title=记住这一点,fonttitle=\bfseries}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\KL}{\mathrm{KL}}
+
+\title{LLM 为什么会「幻觉」？\\\large 从数学原理到工程业务的两层理解}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+%==================================================================
+\section{这一节到底要解释什么}
+
+\begin{problemblock}
+你在和大模型聊天时，可能遇到过这样的事：
+\begin{itemize}
+  \item 它\emph{一本正经}地给你编了一篇不存在的论文；
+  \item 它编出一段看上去合规但实际上对不上数据库的 SQL；
+  \item 它在医学/法律问题上自信地说错；
+  \item 它引用一个根本不存在的 API、URL、引文。
+\end{itemize}
+这些被统称为 LLM 的\textbf{「幻觉」（hallucination）}。
+
+更让人困惑的是：模型并\emph{不知道自己在编}。
+它不是「主动撒谎」，而是按某种内在机制\emph{算}出来的最可能的下一句话——
+只是这句话恰好和现实对不上。
+
+这一节要讲清楚：
+\begin{enumerate}
+  \item \textbf{数学原理上}：训练目标本身决定了模型一定会产生幻觉，
+        这不是 bug，是 LLM 的\emph{统计本性}；
+  \item \textbf{工程业务上}：实际系统通过哪些手段把幻觉的影响压到可接受范围。
+\end{enumerate}
+\end{problemblock}
+
+\begin{intuitionblock}
+最快的一句话总结：
+
+\begin{center}
+\textit{LLM 不是「记住事实」，而是「拟合下一个 token 的分布」。
+拟合出来的分布在「事实」这个维度上没有任何特别约束，
+所以它\emph{有时候}会给「错的事实」分配最高概率。}
+\end{center}
+\end{intuitionblock}
+
+\begin{keypointblock}
+幻觉的根源不是模型「不够大」，而是\emph{训练目标}从来没要求过它说真话——
+只要求它说\emph{统计上像训练语料}的话。
+\end{keypointblock}
+
+%==================================================================
+\section{讲解原则}
+
+每一节都按四步走：
+\begin{enumerate}[label=\textbf{\arabic*.}]
+  \item \textbf{背景问题}——上一步还差什么？
+  \item \textbf{朴素直觉}——先用人话讲清楚。
+  \item \textbf{数学表达}——再写公式，每个新符号当场翻译。
+  \item \textbf{工程对应}——这背后是什么实际产品决策。
+\end{enumerate}
+
+%==================================================================
+\section{零基础最该问的 6 个问题}
+
+\begin{enumerate}[label=\textbf{Q\arabic*.}]
+  \item LLM 到底在算什么？什么叫「下一个 token 的概率分布」？
+  \item 训练目标是什么？为什么这个目标就足以让它「会说话」却\emph{不保证}它说的是真话？
+  \item 为什么扩大模型/加更多数据，不能彻底消除幻觉？
+  \item 「采样温度」「top-k」「top-p」这些采样参数和幻觉是什么关系？
+  \item 模型自己\emph{知不知道}它在编？什么是「校准（calibration）」？
+  \item 工程上能用 RAG、工具调用、约束解码、人工反馈把幻觉压到什么程度？
+\end{enumerate}
+
+下面所有节都在回答其中一个或几个问题。
+
+%==================================================================
+\section{Q1：LLM 在算什么？——下一个 token 的条件分布}
+
+\subsection{背景问题}
+
+要先把术语对齐：模型「输出文字」的过程，本质上是在做\emph{概率建模}。
+
+\subsection{朴素直觉}
+
+\begin{intuitionblock}
+把一段文本想象成一串单元（叫 \textbf{token}，可以粗略当成「子词」）。
+模型的工作就是：
+\begin{quote}
+\textit{已经看见了前面 $t-1$ 个 token，下一个 token 是「the」「a」「dog」……每个的概率是多少？}
+\end{quote}
+注意：是\emph{概率}，不是「答案」。模型给出一张覆盖全词表（几万个词）的概率表，
+然后采样器从这张表里挑一个，作为下一个词。
+\end{intuitionblock}
+
+\subsection{数学表达}
+
+记 token 序列为 $w_1, w_2, \dots, w_T$，词表为 $\mathcal{V}$，模型参数为 $\theta$。
+模型定义的是\textbf{条件分布}：
+\[
+  p_\theta(w_t \mid w_1, \dots, w_{t-1}) \in \Delta^{|\mathcal{V}|-1},
+\]
+也就是「在前文给定的条件下，下一个 token 的概率分布」。
+整段文本的概率被\emph{自回归}地分解成
+\[
+  p_\theta(w_1, \dots, w_T) \;=\; \prod_{t=1}^{T} p_\theta(w_t \mid w_{<t}).
+\]
+
+\begin{remark}
+$\Delta^{|\mathcal{V}|-1}$ 是「概率单纯形」的写法：
+$|\mathcal{V}|$ 个非负数，加起来等于 1。简单理解为「合法的概率分布」即可。
+\end{remark}
+
+\subsection{工程对应}
+
+\begin{engbox}
+LLM 服务的接口几乎都长这样：
+\begin{itemize}
+  \item 输入：一段 prompt；
+  \item 输出：一串 token，伴随每一步的概率（或 logprob）。
+\end{itemize}
+所谓「写文章」「写代码」「答题」都是同一件事：\emph{反复采样下一个 token}。
+模型并不区分「写小说」（创作）和「答事实题」（事实）这两种语境；
+它只是在分布上「看哪种在训练语料里更常见」。
+\end{engbox}
+
+%==================================================================
+\section{Q2：训练目标——为什么它学会说话却没学会说真话}
+
+\subsection{背景问题}
+
+模型用什么目标训练？这个目标和「真假」有什么关系？
+
+\subsection{朴素直觉}
+
+\begin{intuitionblock}
+预训练只做一件事：\textbf{对着海量文本，学会预测下一个 token}。
+真就是这么简单。模型的「老师」就是\emph{下一个真实出现过的 token}。
+\textbf{没有人告诉它「这句话是真的」「那句话是假的」}——
+训练语料里有真，也有假，也有虚构小说，也有错的网页。模型学的是\emph{平均分布}。
+\end{intuitionblock}
+
+\subsection{数学表达：交叉熵 = 极大似然}
+
+设训练数据来自真实分布 $p_{\text{data}}$，模型分布是 $p_\theta$。
+预训练损失就是\textbf{交叉熵}：
+\[
+  \mathcal{L}(\theta)
+  \;=\;
+  -\,\E_{w \sim p_{\text{data}}}\!\left[\sum_{t=1}^{T} \log p_\theta(w_t \mid w_{<t})\right].
+\]
+\textbf{最小化它，等价于最小化}
+\[
+  \KL\!\big(p_{\text{data}} \,\Vert\, p_\theta\big)
+  \;=\;
+  \sum_{w} p_{\text{data}}(w) \log \frac{p_{\text{data}}(w)}{p_\theta(w)}.
+\]
+也就是说：
+\begin{quote}
+\textit{训练目标就是「让 $p_\theta$ 尽可能贴近 $p_{\text{data}}$」。}
+\end{quote}
+
+\begin{mathbox}{为什么这一定会产生幻觉}
+关键在于「真实分布」是文本分布，\emph{不是}事实分布。
+形式上：
+\[
+  p_{\text{data}}(\text{文本}) \;\neq\; \mathbb{1}\{\text{文本是真的}\}.
+\]
+也就是：训练分布把「合理的语言」都打上了非零概率，
+\emph{包括语法通顺但事实错误的话}。
+模型完美拟合 $p_{\text{data}}$ 的代价，就是它会以非零概率生成这些「合理的假话」。
+\end{mathbox}
+
+\subsection{工程对应}
+
+\begin{engbox}
+\textbf{这就是「幻觉是设计上的副产品」的真正含义。}
+任何只用「下一个 token 似然」做监督的预训练，
+都\emph{无法保证}「事实正确」这个外部约束。
+后训练（SFT、RLHF、DPO 等）只能在分布上\emph{挪一挪}权重，
+不能从根上把「假话」的概率压到 0。
+\end{engbox}
+
+%==================================================================
+\section{Q3：为什么模型加大也救不了}
+
+\subsection{有限近似 + 长尾事实}
+
+\begin{intuitionblock}
+就算模型能完美拟合 $p_{\text{data}}$，幻觉也救不了，原因有两个：
+
+\begin{enumerate}
+  \item \textbf{$p_{\text{data}}$ 自身有错}：训练语料里就有错的、过时的、自相矛盾的内容。
+        让模型「学得越像」，它把这些错误也学得越像。
+  \item \textbf{长尾事实}：很多事实（比如「某小镇 2023 年的镇长是谁」）在训练语料里
+        几乎不出现，分布在这种位置上几乎是「均匀噪声」，
+        采样出来的几乎一定是错的。
+\end{enumerate}
+\end{intuitionblock}
+
+\subsection{有限模型容量带来的「最近邻幻觉」}
+
+\begin{mathbox}{近似误差}
+现实中模型容量有限，参数 $\theta$ 是\emph{近似}解。
+对一个真实事实 $w^\star$ 周围，模型分布通常长这样：
+\[
+  p_\theta(w \mid c) \;\approx\; \sum_{i} \pi_i\, \delta_{w^{(i)}},
+\]
+即在若干个「在训练语料里和 $c$ 配对过的相似回答」上分散概率。
+当真实答案不在这若干个里，模型只能从最像的几个里挑——
+这正是「\emph{听起来对、查起来错}」的典型形态。
+\end{mathbox}
+
+\subsection*{一个粗糙的下界（直觉证明）}
+
+如果某条事实在训练语料里出现的频率是 $\epsilon$，
+那么哪怕模型把全部「学习容量」都用在这一条上，
+它的最佳判别准确率也受限于它见过的样本数。
+\textbf{结论：}规模不能消除幻觉，最多让它\emph{更少、更隐蔽}。
+
+\subsection{工程对应}
+
+\begin{engbox}
+这就是为什么所有严肃的产品都不会「裸用」一个大模型来回答事实问题，
+而是必须配合\textbf{外部知识源}（数据库、搜索、文档库）。
+模型负责\emph{语言}，外部源负责\emph{事实}——这是真正的工程分工。
+\end{engbox}
+
+%==================================================================
+\section{Q4：采样参数怎么放大或抑制幻觉}
+
+\subsection{贪心、温度、top-k、top-p 简介}
+
+设模型给出 logits $z \in \mathbb{R}^{|\mathcal{V}|}$，
+经过\emph{温度缩放}的 softmax 是
+\[
+  p_T(w) \;=\; \frac{\exp(z_w / T)}{\sum_{w'} \exp(z_{w'} / T)}.
+\]
+温度 $T$ 的几个极限：
+\begin{itemize}
+  \item $T \to 0^+$：分布塌成最大概率位置——\textbf{贪心}。
+  \item $T = 1$：原始分布。
+  \item $T \to \infty$：分布趋向均匀——几乎纯噪声。
+\end{itemize}
+
+\textbf{top-$k$} 是只在概率最高的 $k$ 个 token 里采样；
+\textbf{top-$p$（核采样）}是在累计概率刚好 $\ge p$ 的最小集合里采样。
+两者都是「砍掉长尾」。
+
+\subsection{对幻觉的影响}
+
+\begin{mathbox}{两种典型场景}
+\begin{itemize}
+  \item \textbf{$T$ 越大，幻觉越多。}
+        高温让低概率 token 被采到的机会大幅上升，「看起来合理但对不上事实」的回答更频繁。
+  \item \textbf{$T = 0$ / 贪心也未必安全。}
+        如果模型在某个事实位置上的最大概率本身就指向「错答案」，
+        贪心会\emph{每次都吐出同一个错答案}（更难被察觉）。
+\end{itemize}
+\end{mathbox}
+
+\subsection{工程对应}
+
+\begin{engbox}
+实际服务通常按\emph{任务}选采样：
+\begin{itemize}
+  \item \textbf{创意写作}：高温、宽 top-p，鼓励多样；
+  \item \textbf{代码 / 事实问答 / SQL}：低温、窄 top-p，甚至贪心；
+  \item \textbf{多次采样 + 投票（self-consistency）}：
+        同一个问题采若干次，挑「答案出现最多」的那一个，
+        在数学题、程序题上能明显降低单次幻觉。
+\end{itemize}
+\end{engbox}
+
+%==================================================================
+\section{Q5：模型「知不知道」自己在编？——置信度与校准}
+
+\subsection{什么叫「校准」}
+
+\begin{intuitionblock}
+一个模型说「我有 90\% 把握」时，如果它「真的」在这种情况里 90\% 的时候是对的，
+我们就说它\textbf{校准（calibrated）}得好。
+\textbf{幻觉的麻烦不只是「错」，更是「错得很自信」。}
+\end{intuitionblock}
+
+\subsection{数学表达}
+
+\begin{mathbox}{校准误差}
+设模型对答案 $\hat y$ 的自报置信度是 $\hat p$，真实正确率是 $\Pr(\hat y = y \mid \hat p)$。
+完美校准要求
+\[
+  \Pr(\hat y = y \mid \hat p = q) \;=\; q,\qquad \forall q \in [0,1].
+\]
+校准误差用 \textbf{Expected Calibration Error (ECE)} 衡量：
+\[
+  \mathrm{ECE}
+  \;=\;
+  \sum_{m=1}^{M} \frac{|B_m|}{n}\, \big|\,\mathrm{acc}(B_m) - \mathrm{conf}(B_m)\,\big|,
+\]
+其中 $B_m$ 是按置信度分桶后的样本，$\mathrm{acc}, \mathrm{conf}$ 分别是该桶的真实正确率和平均自报置信度。
+\end{mathbox}
+
+\subsection*{为什么 RLHF 之后校准反而变差}
+
+很多研究观察到：仅用预训练时模型的 token 概率 \emph{相对}校准；
+经过 RLHF 之后，模型学会「显得自信」，
+对开放问答\emph{自信地说错}的频率反而更高。
+这是因为 RLHF 的奖励信号偏好「果断、流畅」的回答，
+\emph{不偏好}「我不确定」。
+
+\subsection{工程对应}
+
+\begin{engbox}
+工程上常见的几种「让模型坦白不确定」的手段：
+\begin{itemize}
+  \item 在 system prompt 里硬性要求：「不知道就说不知道」；
+  \item 用模型自报置信度（\emph{verbalized confidence}）做下游过滤；
+  \item 使用模型 logprob 做 token 级不确定度估计；
+  \item 对长答案做\emph{自评分（self-critique）}或多模型互评；
+  \item 关键场景接\textbf{弃答}逻辑：低于阈值就回退到「请提供更多信息」。
+\end{itemize}
+\end{engbox}
+
+%==================================================================
+\section{Q6：工程上把幻觉压下去的几条主线}
+
+\subsection{主线 1：检索增强（RAG）}
+
+\begin{intuitionblock}
+不让模型「凭记忆」答事实题，而是先\emph{检索}相关文档片段，再让模型「基于这段材料」回答。
+模型的角色从「百科全书」变成「会读书的助手」。
+\end{intuitionblock}
+
+\begin{mathbox}{形式化}
+设外部知识库 $\mathcal{D}$，给定问题 $q$，先用检索器 $R$ 取出片段 $D_q = R(q, \mathcal{D})$，
+然后采样
+\[
+  \hat a \sim p_\theta(\cdot \mid q, D_q).
+\]
+这把答案的事实成分「锚定」到 $D_q$ 上。\emph{条件越强，幻觉空间越小}。
+\end{mathbox}
+
+\textbf{常见失败模式}：检索召回不到正确片段、模型忽视片段（「context drift」）、
+片段彼此矛盾。所以 RAG 不是银弹，而是一条非常有效的减幻觉路径。
+
+\subsection{主线 2：工具调用（function calling）}
+
+\begin{engbox}
+对「能算就别猜」的事实（数学、SQL、日期、汇率、代码运行结果）：
+让模型\emph{调用工具}，把答案算出来再回写。
+计算器、SQL 引擎、单元测试，全是工具。
+模型负责\emph{决定调什么、传什么参数}，工具负责\emph{给出真值}。
+\end{engbox}
+
+\subsection{主线 3：约束解码 / 结构化输出}
+
+把输出空间从「全词表」收窄到「合法语法」：
+\begin{itemize}
+  \item JSON Schema 约束 → 输出一定是合法 JSON；
+  \item Regex / CFG 约束 → 输出符合特定语法；
+  \item 选项受限 → 答案必须从给定候选里选。
+\end{itemize}
+这本质上是\emph{在采样时把不合法 token 的概率直接置零}，
+形式化是「条件分布在受限子集上的归一化」。
+对「编出格式错乱」「编不存在的字段名」这类幻觉特别有效。
+
+\subsection{主线 4：后训练对齐（SFT、RLHF、DPO）}
+
+让模型「更愿意说实话、更愿意承认不知道」。
+但要清楚：对齐\emph{改变}的是分布的形状，
+不会让分布的支撑集（support）从「假话也有非零概率」变成「假话概率 = 0」。
+
+\subsection{主线 5：评测与守门员}
+
+\begin{engbox}
+任何严肃产品都需要一个外置的\textbf{守门系统}：
+\begin{itemize}
+  \item 自动评测集（针对常见事实题、易幻觉题）；
+  \item 在线检测（关键字段做事后核查、与权威数据库比对）；
+  \item 用户反馈环（标注 → 进 SFT/DPO 数据）；
+  \item 业务降级策略（幻觉风险 vs.\ 给不出答案的成本权衡）。
+\end{itemize}
+\end{engbox}
+
+%==================================================================
+\section{把整篇压成一张表}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{4cm} p{5cm} p{5cm}@{}}
+\toprule
+\textbf{幻觉的来源} & \textbf{数学/统计层面} & \textbf{工程对策} \\
+\midrule
+训练目标只看似然 & $\min \KL(p_{\text{data}} \Vert p_\theta)$，真假不在目标里 & 后训练对齐、奖励模型加事实奖励 \\
+语料本身有错/有虚构 & $p_{\text{data}}$ 不是事实指示函数 & 数据清洗、来源加权、引用约束 \\
+长尾事实样本太少 & 频率 $\epsilon$ 极小，估计方差大 & RAG、工具调用、外部知识源 \\
+高温 / 宽 top-p 采样 & 长尾 token 概率被放大 & 任务自适应采样参数；自一致性投票 \\
+RLHF 倾向「显得自信」 & 校准变差，ECE 上升 & verbalized confidence、弃答阈值 \\
+输出格式自由 & 支撑集太大 & JSON / 语法约束解码 \\
+模型直接答事实题 & 事实信息没被「锚定」 & RAG / 工具调用把事实从模型里搬出去 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%==================================================================
+\section{这一节真正该记住的}
+
+\begin{enumerate}[label=\textbf{\arabic*.}]
+  \item LLM 输出的是「下一个 token 的条件分布」，不是「答案」。
+  \item 训练目标是 \emph{交叉熵 / 极大似然}，等价于让 $p_\theta$ 贴近 $p_{\text{data}}$；
+        这一目标里\emph{不存在}「事实正确」这个约束。
+  \item 因此幻觉不是 bug，而是「拟合文本分布」的必然副产品。
+        扩大模型只能减少幻觉、不能消除幻觉。
+  \item 采样温度、top-k、top-p 决定了「长尾 token 被采到的概率」——
+        这是幻觉率的一个直接旋钮。
+  \item 「错得很自信」是 RLHF 阶段常见的副作用，
+        体现在校准误差（ECE）变大。
+  \item 工程上抑制幻觉的几条主线：
+        \emph{RAG、工具调用、约束解码、对齐训练、评测与守门}。
+        没有一条是银弹，组合使用才有用。
+\end{enumerate}
+
+\begin{keypointblock}
+\textbf{一句话总结：}\\
+模型只学会了「像人话」，没学会「是真的」。\\
+所以工程上，要把「事实」这件事从模型里\emph{搬出去}（RAG / 工具 / 守门），\\
+而不是寄希望于模型「再大一点就不会编了」。
+\end{keypointblock}
+
+\end{document}

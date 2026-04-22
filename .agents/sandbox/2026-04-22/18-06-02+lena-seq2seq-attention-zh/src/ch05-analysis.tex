@@ -1,0 +1,168 @@
+\section{分析与可解释性 (Analysis and Interpretability)}
+\label{sec:analysis}
+
+\subsection{章节定位 + 零基础该问的问题}
+
+前面几章我们一路堆模型：先有 seq2seq，再加 attention，再加 multi-head，
+每一步都伴随着一个“直觉理由”——比如“注意力应该能学到对齐”，
+“多头应该能学到不同种类的关系”。
+但这些都只是\emph{设计动机}，并不等于模型真的照做了。
+这一章要做的事是：\textbf{打开训练好的模型，看看里面到底发生了什么}。
+
+\begin{problemblock}{零基础读者会问的三个问题}
+\begin{enumerate}
+  \item 多头注意力的每个 head 真的在干不同的事吗？还是大家学的都差不多？
+  \item 既然这样，能不能干脆把一些“没用”的 head 裁掉？
+  \item Encoder 内部的向量表示，到底\emph{编码了什么语言学信息}（词性？形态？句法？）？
+\end{enumerate}
+\end{problemblock}
+
+下文以两条研究线分别回应：第一条来自
+Voita et al.\ (ACL 2019, \emph{Analyzing Multi-Head Self-Attention}),
+第二条来自 Belinkov et al.\ (2017) 等围绕 NMT encoder 的 probing 工作。
+
+\subsection{多头自注意力的头到底在干嘛？}
+\label{sec:head-roles}
+
+\subsubsection{重要的 head 是可解释的}
+
+Voita et al.\ 训练好一个 Transformer NMT 模型后，逐个 head 分析其行为，
+得到一个非常干净的结论：\textbf{真正“干活”的只是少数 head}，
+而这些 head 的角色\emph{可以被人读懂}。
+
+\begin{intuitionblock}
+不是每个 head 都是平等的。一个训练好的多头自注意力，
+更像是“几个专家 + 一堆陪跑”。
+\end{intuitionblock}
+
+被识别出的“专家”大体可以归成三类：
+
+\begin{description}
+  \item[(a) 位置型 head (positional heads)]
+    几乎只看相邻位置。
+    Encoder 中典型地有 2--3 个“看前一个 token”的 head，
+    以及 \(\sim\)2 个“看后一个 token”的 head。
+    这相当于模型自己学出了一个轻量级的局部卷积。
+  \item[(b) 句法型 head (syntactic heads)]
+    会跟踪“主语\(\to\)动词”“动词\(\to\)宾语”这类语法关系。
+    这种行为在多个不同语言对的模型里都能观察到，
+    说明它不是某种偶然，而是 multi-head 自然倾向于做的事。
+  \item[(c) 稀有词型 head (rare-tokens head)]
+    在第一层往往会出现一个特殊的 head：它把注意力集中到句子里最稀有的 token 上。
+    一个合理的解释是，模型在“锚定”那些信息量最大的稀有线索；
+    同时这个现象也带有一点轻微的过拟合气味
+    （稀有 token 在训练集里本来就更具区分度）。
+\end{description}
+
+这个结果反过来验证了 multi-head 的归纳偏置：
+\textbf{不同 head 确实会学到不同的东西}，并不是简单地把同一种关系算了 \(h\) 遍。
+
+\subsubsection{大多数 head 可以被剪掉}
+
+同一篇论文进一步做了一件激进的事：
+给每个 head 套上一个可学习的“门”（gate），
+通过稀疏正则把不重要的 head 推向 0，
+然后看模型质量随被裁 head 数量的下降。
+
+观察到两个互相印证的现象：
+
+\begin{enumerate}
+  \item \textbf{很大一部分 head 可以被裁掉}，翻译质量几乎不掉。
+        典型设置下，只剩下 1/4 \(\sim\) 1/3 的 head，BLEU 仍然接近原模型。
+  \item \textbf{留下来的 head 恰好就是上面归类的那些“专家”}
+        （位置型、句法型、稀有词型）。
+\end{enumerate}
+
+但有一个看起来反直觉、却非常重要的细节：
+
+\begin{keypointblock}
+\textbf{这\emph{不}意味着可以一开始就训练一个 head 数很少的模型。}
+直接用少头训练，质量明显更差。
+多头在训练时的真正作用更像是\emph{一个更大的假设空间}：
+让模型有机会“尝试”各种行为模式，最后挑出有用的那几个。
+剪枝是事后压缩，而不是先验设计。
+\end{keypointblock}
+
+\subsection{Probing：表示里到底编码了什么？}
+\label{sec:probing}
+
+第二个问题指向 encoder 输出的那一堆向量：它们里面除了“能用来翻译”，
+是否还藏着具体的语言学信息？衡量这件事的标准工具叫 \textbf{probing}（探针）。
+
+\subsubsection{Probing 的方法论}
+
+\begin{mathbox}{Probing 的标准流程}
+\begin{enumerate}
+  \item \textbf{冻结}已经训练好的 NMT encoder（参数不再更新）。
+  \item 把一批带标注的数据（例如每个词都有词性标签）喂进去，
+        在指定层取出每个词的向量表示 \(h_i\)。
+  \item 在这些\emph{冻结}的 \(h_i\) 之上，训练一个\emph{小}分类器
+        （通常是线性层或浅层 MLP）去预测目标标签 \(y_i\)。
+  \item 用这个小分类器的准确率作为代理指标，
+        近似回答“\(h_i\) 里有多少关于 \(y_i\) 的信息”。
+\end{enumerate}
+\end{mathbox}
+
+\begin{remark}
+一个常被忽视的注意点：probing 的准确率本身并不直接等于
+“表示里编码了多少信息”，因为探针自己就有一定学习能力，
+甚至能从随机特征里学出一些东西。
+严格的 probing 研究通常会做对照实验（比如随机初始化的 encoder、
+打乱标签的对照、或控制探针容量）。
+本节只用其结论性观察，对方法论细节不再展开。
+\end{remark}
+
+\subsubsection{NMT encoder 学到了什么形态学？}
+
+Belinkov et al.\ (2017) 用 probing 方法系统研究了 NMT encoder。
+两个值得记住的结论：
+
+\paragraph{(a) 词性 (POS) 与层数的关系}
+拿 encoder 各层的表示去 probe POS 标注：
+\begin{itemize}
+  \item 训练后的 encoder 各层都比原始词嵌入显著更好；
+  \item 但有趣的是，\textbf{第 1 层的 POS 探针准确率往往\emph{高于}第 2 层}。
+\end{itemize}
+对应的解释假设是：
+第 1 层更接近“词级结构”（词性、形态等表层属性），
+第 2 层开始向更抽象、更语义化的方向移动，
+反而把表层语法信息“压”了下去。
+这与“层数越深 = 越好”的朴素直觉是矛盾的。
+
+\paragraph{(b) 目标语言的反向影响}
+固定 source 语言（比如阿拉伯语），变化 target 语言，再 probe source 端形态信息：
+
+\begin{intuitionblock}
+直觉上，target 越“强”，encoder 越要努力工作，所以 encoder 的表示应该越丰富。
+\end{intuitionblock}
+
+实际观察到的是这样一个稍微反直觉的结果：
+
+\begin{quote}
+\textbf{Target 语言形态\emph{越贫乏}（如英语），encoder 对 source 形态的编码反而\emph{越好}；
+target 语言形态\emph{越丰富}（如希伯来语、德语），encoder 反而编码得更弱。}
+\end{quote}
+
+一个解释方式是：
+当 target 自己有丰富的屈折变化时，模型可以“偷懒”，
+让大部分形态信息直接从 target 端的解码器/词表那里产生；
+而 target 一旦贫乏（英语几乎没有屈折），
+encoder 就不得不在自己这一侧把 source 的形态彻底搞清楚，
+否则解码器没法做出正确翻译。
+
+\subsection{这一章真正该记住的}
+
+\begin{keypointblock}
+\begin{enumerate}
+  \item \textbf{头不平等}：训练好的多头注意力里，只有一小部分 head 真正承担主要工作。
+  \item \textbf{角色可解释}：重要的 head 倾向于扮演位置型、句法型、稀有词型这几种角色，
+        说明 multi-head 的归纳偏置确实在起作用。
+  \item \textbf{剪枝可行，但前提是先有多头}：可以事后裁掉大部分 head 而几乎不掉点；
+        但直接用少头从头训练效果会明显更差——多头主要是\emph{训练阶段的假设空间}。
+  \item \textbf{Probing 是“表示里有什么”的标准工具}：
+        冻结 encoder，在表示之上训练浅层分类器，用准确率近似信息量；
+        但要小心探针自身能力带来的偏差。
+  \item \textbf{Target 越弱，encoder 越强}：
+        当 target 语言形态贫乏时，NMT encoder 反而会把 source 的形态信息编码得更彻底。
+\end{enumerate}
+\end{keypointblock}

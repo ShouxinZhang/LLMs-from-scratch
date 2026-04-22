@@ -1,0 +1,348 @@
+\section{Transformer：Attention is All You Need}
+\label{sec:ch03-transformer}
+
+\subsection{章节定位}
+\label{subsec:ch03-positioning}
+
+\begin{problemblock}
+读完第二章，我们已经知道 attention 可以让 decoder 在每一步“挑”encoder 的不同位置看。
+但 RNN 仍然是骨架：编码端要顺序读完整个源句，解码端要顺序生成。这意味着\textbf{长序列训练慢、难以并行}，并且远距离依赖只能通过隐状态间接传递。
+
+那么自然要问：能不能完全不用 RNN，只用 attention 就把序列建模做完？
+\end{problemblock}
+
+\begin{intuitionblock}
+2017 年 Vaswani 等人的论文《Attention Is All You Need》给出的回答是：可以。
+他们提出的 \textbf{Transformer} 架构\textbf{不含任何 recurrence、也不含卷积}，整套模型只由 attention、线性层、归一化和位置编码拼成。
+
+它带来的直接好处：
+\begin{itemize}
+  \item \textbf{训练阶段并行}：一句话里所有位置可以同时算，而不是按时间步递推。
+  \item \textbf{长依赖一步到位}：任意两个位置之间的“距离”都是 1 次 attention，而不是 $O(n)$ 步隐状态传递。
+  \item \textbf{已成为事实标准}：今天几乎所有大语言模型 (GPT/Llama/Qwen/\ldots) 都是 Transformer 的变种。
+\end{itemize}
+\end{intuitionblock}
+
+为了把这一章读“懂”而不是只“看过”，我们围绕 5 个新手最容易卡住的问题来展开：
+\begin{enumerate}
+  \item 什么叫\textbf{自注意力 (self-attention)}？跟第二章那个 encoder--decoder 之间的 attention 有什么区别？
+  \item 为什么一个 token 要同时扮演 \textbf{Query / Key / Value} 三个角色，不能只用一个向量？
+  \item 公式里那个 $\sqrt{d_k}$ 是哪来的，能不能不除？
+  \item \textbf{Masked} self-attention 是在 mask 谁、为什么要 mask？
+  \item \textbf{Multi-head} 到底比单头多做了什么？
+\end{enumerate}
+后面每一节会回答其中一两个。
+
+\subsection{自注意力 Self-Attention：让 token 互相看}
+\label{subsec:ch03-selfattn}
+
+\begin{problemblock}
+第二章的 attention 是\textbf{跨序列}的：decoder 的当前位置当 query，去看 encoder 的所有位置。
+但编码端自己内部呢？“The animal didn't cross the street because \emph{it} was too tired.” 里面 ``it'' 到底指 ``animal'' 还是 ``street''？
+我们希望 encoder 的同一层里，每个词都能看一眼同一句话里的其他词，再决定自己的表示。
+\end{problemblock}
+
+\begin{intuitionblock}
+\textbf{Self-attention} 就是把 query、key、value \emph{都来自同一侧} 的 attention。
+对一句话里的每个 token，做这样三件事：
+\begin{itemize}
+  \item 我把自己变成一个 \textbf{Query} 向量 $\vect{q}$：表示\emph{“我想问什么”}。
+  \item 我把自己变成一个 \textbf{Key} 向量 $\vect{k}$：表示\emph{“别人来找我时，我对外的标签是什么”}。
+  \item 我把自己变成一个 \textbf{Value} 向量 $\vect{v}$：表示\emph{“如果别人决定关注我，我会贡献什么内容”}。
+\end{itemize}
+然后让每个 query 跟所有 key 比相似度，得到权重，再用这些权重对所有 value 加权求和，
+就得到这个 token 的新表示。整句话里所有 token \emph{并行}做这件事。
+\end{intuitionblock}
+
+数学上，把整句话堆成矩阵：$Q \in \R^{n \times d_k}$，$K \in \R^{n \times d_k}$，$V \in \R^{n \times d_v}$，其中 $n$ 是序列长度。
+
+\begin{mathbox}{Scaled Dot-Product Attention}
+\[
+  \mathrm{Attention}(Q, K, V)
+  \;=\; \softmax\!\left(\frac{Q K^\top}{\sqrt{d_k}}\right) V .
+\]
+其中：
+\begin{itemize}
+  \item $Q K^\top \in \R^{n \times n}$：第 $(i,j)$ 项就是位置 $i$ 的 query 和位置 $j$ 的 key 的内积，
+        相当于 $\score(\vect{q}_i, \vect{k}_j)$。
+  \item 除以 $\sqrt{d_k}$：缩放因子，下面解释。
+  \item $\softmax$ 沿\textbf{每一行}做：每个 query 对所有 key 的权重和为 1。
+  \item 最后乘 $V$：用这些权重把 value 加权求和。
+\end{itemize}
+\end{mathbox}
+
+\begin{remark}[为什么要除 $\sqrt{d_k}$？]
+两个独立、零均值、单位方差的 $d_k$ 维向量做点积，结果的方差大约是 $d_k$。
+$d_k$ 一大（例如 64、128），点积的绝对值就会很大；进入 softmax 后，
+最大那一项会被放得极大，其它几乎归零，softmax 退化成 \emph{近似 hard argmax}。
+这时\textbf{梯度几乎为 0}，训练走不动。除以 $\sqrt{d_k}$ 把方差压回 $\approx 1$，softmax 才有梯度。
+\end{remark}
+
+\begin{engbox}
+\textbf{Q/K/V 是怎么来的？} 不是凭空写的，而是用三个可学习的投影矩阵从同一份输入 $X \in \R^{n \times d_{\text{model}}}$ 算出来：
+\[
+  Q = X W_Q,\quad K = X W_K,\quad V = X W_V .
+\]
+也就是说\textbf{“同一个 token 的三种角色”都是它自己的线性变换}，模型自己学三个角度的“画像”。
+\end{engbox}
+
+\begin{example}[“it” 该指谁]
+继续上面的例子：当 ``it'' 这个位置的 query 跟 ``animal'' 的 key 内积大、跟 ``street'' 的 key 内积小，
+softmax 之后 ``animal'' 的权重接近 1，``it'' 的新表示就主要由 ``animal'' 的 value 组成。
+模型不需要任何递归，一步就把指代关系拉到了眼前。
+\end{example}
+
+\subsection{Masked Self-Attention：decoder 不许偷看未来}
+\label{subsec:ch03-masked}
+
+\begin{problemblock}
+Decoder 在\textbf{推理时}是逐词生成的：先吐 $y_1$，再根据 $y_1$ 吐 $y_2$\ldots\ 它\emph{物理上}看不到未来。
+
+但\textbf{训练时}不一样：为了并行，我们会把整句目标序列 $y_1, y_2, \dots, y_T$ 一次性喂进 decoder。
+如果直接做 self-attention，位置 $t$ 的 query 会看到 $y_{t+1}, y_{t+2}, \dots$ 的 key/value，
+等于直接把答案抄过来——训练 loss 会瞬间归零，但模型啥也没学会。
+\end{problemblock}
+
+\begin{intuitionblock}
+解决办法：在 softmax 之前\textbf{把“未来位置”的分数手动设成 $-\infty$}。
+$\mathrm{exp}(-\infty) = 0$，softmax 之后这些位置的权重自然为 0，
+就像它们根本不存在一样。这样\textbf{并行训练}和\textbf{推理时只能看过去}就保持一致。
+\end{intuitionblock}
+
+\begin{mathbox}{Causal Mask}
+设 $S = QK^\top / \sqrt{d_k} \in \R^{n \times n}$ 是未 mask 的分数矩阵，定义因果 mask
+\[
+  M_{ij} =
+  \begin{cases}
+    0,        & j \le i \\
+    -\infty,  & j > i
+  \end{cases}
+\]
+则 masked self-attention 为
+\[
+  \mathrm{Attention}_{\text{masked}}(Q,K,V)
+  \;=\; \softmax(S + M)\, V .
+\]
+矩阵 $S + M$ 是一个\textbf{下三角分数矩阵}，softmax 沿每行做之后上三角全部为 0。
+\end{mathbox}
+
+\begin{remark}[和 RNN decoder 的对比]
+RNN decoder 训练一句长度 $T$ 的目标，需要 \textbf{$T$ 步顺序}前向传播；
+masked self-attention 把这 $T$ 步压成\textbf{一次}矩阵乘法，
+每个位置同时算自己的输出，但通过 mask 保证它\emph{只用得到自己以前的信息}。
+这就是 Transformer 训练比 RNN 快很多的关键之一。
+\end{remark}
+
+\subsection{多头注意力 Multi-Head Attention}
+\label{subsec:ch03-mha}
+
+\begin{problemblock}
+一个词通常跟句子里的别的词存在\textbf{多种不同的关系}：
+主谓一致、修饰、指代、跨从句的并列\ldots\
+单头 attention 只能学一种 ``关注模式''——softmax 那一行决定大头给谁，剩下的就只能分到很小的权重。
+如果我希望同一句话里既能抓 ``it $\to$ animal'' 的指代，又能抓 ``didn't $\to$ cross'' 的否定关系，单头不够用。
+\end{problemblock}
+
+\begin{intuitionblock}
+开\textbf{多个并行的注意力头}：每个头有自己独立的 $W_Q^i, W_K^i, W_V^i$，
+独立地学一种 ``关注什么''。最后把所有头的输出\textbf{拼接}起来，再过一个统一的输出投影 $W_O$ 融合一下。
+\end{intuitionblock}
+
+\begin{mathbox}{Multi-Head Attention}
+设有 $h$ 个头，每个头的维度为 $d_k = d_v = d_{\text{model}} / h$。第 $i$ 个头：
+\[
+  \mathrm{head}_i \;=\; \mathrm{Attention}\!\bigl(Q W_Q^i,\; K W_K^i,\; V W_V^i\bigr).
+\]
+多头注意力的输出为
+\[
+  \mathrm{MultiHead}(Q, K, V)
+  \;=\; \mathrm{Concat}(\mathrm{head}_1, \dots, \mathrm{head}_h)\, W_O .
+\]
+其中 $W_O \in \R^{d_{\text{model}} \times d_{\text{model}}}$ 是输出投影。
+\end{mathbox}
+
+\begin{engbox}
+\textbf{重要的实现细节：多头\emph{不会}让模型变大。}
+工程上不会真的开 $h$ 套独立的小矩阵，而是：
+\begin{enumerate}
+  \item 用\textbf{一个}大的线性层一次性算出 $Q, K, V$，每个的形状是 $(B, n, d_{\text{model}})$；
+  \item 把最后一维 \textbf{reshape} 成 $(h, d_{\text{model}}/h)$，再 \textbf{transpose} 让 $h$ 变成 batch 轴；
+  \item 形状变成 $(B, h, n, d_k)$，然后照常做 scaled dot-product，等价于 $h$ 个头\textbf{并行}计算；
+  \item 算完再 transpose 回去 reshape 拼接，过 $W_O$。
+\end{enumerate}
+所以同样的 $d_{\text{model}}$ 下，``单头'' 和 ``多头'' 的参数量是\textbf{一样的}，只是把同一份参数\emph{切}成几份去看不同关系。
+\end{engbox}
+
+下面是一段 PyTorch 风格的伪代码，演示 reshape + transpose 这个技巧：
+
+\begin{lstlisting}[language=Python]
+# x: (B, n, d_model)
+qkv = self.qkv_proj(x)             # (B, n, 3 * d_model)
+q, k, v = qkv.chunk(3, dim=-1)     # each: (B, n, d_model)
+
+# split heads: d_model -> (h, d_k)
+def split(t):
+    return t.view(B, n, h, d_k).transpose(1, 2)   # (B, h, n, d_k)
+
+q, k, v = split(q), split(k), split(v)
+
+scores = (q @ k.transpose(-2, -1)) / math.sqrt(d_k)   # (B, h, n, n)
+if causal_mask is not None:
+    scores = scores + causal_mask                      # -inf on j > i
+attn = scores.softmax(dim=-1) @ v                      # (B, h, n, d_k)
+
+# merge heads back: (B, h, n, d_k) -> (B, n, d_model)
+out = attn.transpose(1, 2).contiguous().view(B, n, d_model)
+out = self.o_proj(out)                                 # (B, n, d_model)
+\end{lstlisting}
+
+\subsection{Transformer 模型架构}
+\label{subsec:ch03-arch}
+
+到这里 attention 这块的零件都齐了。剩下的事是把它们和几个``脚手架''组件拼成一个完整的 encoder/decoder 模型。
+
+\subsubsection{Feed-Forward Block (FFN)}
+
+\begin{problemblock}
+Self-attention 的工作是``\textbf{看别的位置、把信息搬过来}''。但搬完之后，这个位置自己还需要一步\textbf{非线性的处理}，
+把刚刚收集到的混合信息消化成下一层能用的特征。如果只堆 attention，没有非线性变换，整个模型在线性能力上会很受限。
+\end{problemblock}
+
+\begin{intuitionblock}
+在每一层 attention 之后，对\textbf{每个位置独立}地过一个 2 层 MLP：
+先升维、做 ReLU、再降回原维度。位置之间不交互——因为 ``跨位置交互'' 已经由 attention 负责了，FFN 负责``\textbf{各自消化}''。
+\end{intuitionblock}
+
+\begin{mathbox}{Position-wise Feed-Forward}
+\[
+  \mathrm{FFN}(x) \;=\; \max(0,\; x W_1 + b_1)\, W_2 + b_2 .
+\]
+通常 $W_1 \in \R^{d_{\text{model}} \times d_{\text{ff}}}$、$W_2 \in \R^{d_{\text{ff}} \times d_{\text{model}}}$，
+其中 $d_{\text{ff}}$ 一般取 $4 d_{\text{model}}$。``per-position'' 的意思是：同一个 $W_1, W_2$ 应用到序列里每个 token，token 之间不串。
+\end{mathbox}
+
+\subsubsection{残差连接 Residual Connections}
+
+\begin{intuitionblock}
+Transformer 把 attention 和 FFN 都包进同一个模板里：
+\[
+  \text{output} \;=\; \mathrm{LayerNorm}\bigl(x + \mathrm{Sublayer}(x)\bigr) .
+\]
+这个\textbf{加法}就是``Add \& Norm''里的``Add'',
+也就是 ResNet 那种残差连接：让信号有一条``\textbf{直通车}''可以绕过子层。
+
+好处：
+\begin{itemize}
+  \item 梯度更容易传到底层，可以放心堆几十层。
+  \item 子层只需要学``\emph{在原表示上加什么修正}''，比从零学整张表示容易得多。
+\end{itemize}
+\end{intuitionblock}
+
+每一个 attention 子块和每一个 FFN 子块后面都加这种残差连接。
+
+\subsubsection{层归一化 Layer Normalization}
+
+\begin{problemblock}
+深层网络里激活值的尺度容易飘——某一层突然很大或很小，会让训练不稳定。
+但 \textbf{BatchNorm} 在变长序列上不太合适：不同样本长度不同，按 batch 统计意义不明确，而且\textbf{推理时一句一句来}，根本没有 batch 统计。
+\end{problemblock}
+
+\begin{intuitionblock}
+换成 \textbf{LayerNorm}：对\textbf{每一个 token 自己的特征向量}做归一化，
+也就是沿着 $d_{\text{model}}$ 这一维算均值和方差，跟 batch 大小、序列长度都无关。
+\end{intuitionblock}
+
+\begin{mathbox}{Layer Normalization}
+对一个 token 向量 $x \in \R^{d_{\text{model}}}$，
+\[
+  \mu = \tfrac{1}{d}\sum_{j} x_j,
+  \qquad
+  \sigma = \sqrt{\tfrac{1}{d}\sum_{j}(x_j - \mu)^2 + \varepsilon},
+\]
+\[
+  \mathrm{LN}(x) \;=\; \frac{x - \mu}{\sigma}\odot \mathit{scale} \;+\; \mathit{bias},
+\]
+其中 $\mathit{scale}, \mathit{bias} \in \R^{d_{\text{model}}}$ 是可学习参数。
+\end{mathbox}
+
+\begin{remark}
+LayerNorm 不依赖 batch 维 $\Rightarrow$ 对变长序列友好；训练和推理行为完全一致，不需要像 BN 那样维护 running mean/var。
+这也是 NLP 模型几乎清一色用 LayerNorm 而不是 BatchNorm 的原因。
+\end{remark}
+
+\subsubsection{位置编码 Positional Encoding}
+
+\begin{problemblock}
+Self-attention 的公式 $\softmax(QK^\top/\sqrt{d_k})V$ 里\textbf{没有任何关于位置的信息}：
+如果你把输入 token 顺序打乱，输出也只是相应被打乱——模型本身是\textbf{置换等变}的。
+但语言显然不是词袋，``狗咬人''和``人咬狗''意思不同，模型必须知道每个 token 在序列中的位置。
+\end{problemblock}
+
+\begin{intuitionblock}
+最简单的做法：给每个位置 $\mathit{pos}$ 配一个``位置向量'' $\mathrm{PE}_{\mathit{pos}} \in \R^{d_{\text{model}}}$，
+直接\textbf{加到 token embedding 上}：
+\[
+  \tilde{x}_{\mathit{pos}} = \mathrm{Embed}(\text{token}_{\mathit{pos}}) + \mathrm{PE}_{\mathit{pos}} .
+\]
+然后再送入 self-attention。这样同一个词在不同位置就有不同的输入向量，模型自然能区分顺序。
+\end{intuitionblock}
+
+\begin{mathbox}{Sinusoidal Positional Encoding（原论文）}
+\[
+  \mathrm{PE}_{\mathit{pos},\, 2i}   \;=\; \sin\!\left(\frac{\mathit{pos}}{10000^{2i / d_{\text{model}}}}\right),
+\]
+\[
+  \mathrm{PE}_{\mathit{pos},\, 2i+1} \;=\; \cos\!\left(\frac{\mathit{pos}}{10000^{2i / d_{\text{model}}}}\right).
+\]
+偶数维放 sin，奇数维放 cos，频率沿维度按几何级数变化：低维高频、高维低频。
+\end{mathbox}
+
+\begin{remark}[要不要学位置？]
+也可以把 $\mathrm{PE}$ 改成\textbf{可学习的位置 embedding}（GPT 系就是这么做的）。
+正弦版本的卖点是：它\textbf{不依赖训练长度}，理论上对超过训练时见过的序列长度也能给出有定义的位置向量；
+学习版本表达力更强，但只在训练长度范围内有意义。两者在常规长度上效果差不多。
+\end{remark}
+
+\subsubsection{把整体拼起来}
+
+万事俱备。一个完整的 Transformer 长这样：
+
+\textbf{Encoder}（共 $N$ 层，原论文 $N=6$），每层：
+\begin{enumerate}
+  \item Self-Attention $\to$ Add \& Norm
+  \item FFN $\to$ Add \& Norm
+\end{enumerate}
+
+\textbf{Decoder}（共 $N$ 层），每层：
+\begin{enumerate}
+  \item \textbf{Masked} Self-Attention $\to$ Add \& Norm \quad(\emph{只看自己前面已生成的位置})
+  \item \textbf{Cross-Attention} $\to$ Add \& Norm \quad(\emph{Q 来自 decoder，K/V 来自 encoder 顶层输出})
+  \item FFN $\to$ Add \& Norm
+\end{enumerate}
+
+\textbf{输出头}：decoder 最后一层 $\to$ Linear $\to$ $\softmax$ over vocab，逐位置预测下一个 token。
+
+\begin{keypointblock}
+\textbf{Cross-attention 是什么？}
+它就是第二章 Bahdanau / Luong attention 在 Transformer 里的``\textbf{再实现}''：
+还是一样的 $\softmax(QK^\top/\sqrt{d_k})V$，
+只是\emph{Q 来自 decoder 当前层}（``我现在想要什么信息''），
+而 \emph{K, V 来自 encoder 的最终输出}（``源句子里有哪些信息可拿''）。
+所以原本 RNN 时代的``encoder--decoder attention'' 现在只是 Transformer 里\textbf{众多 attention 之一}，机制完全统一。
+\end{keypointblock}
+
+\subsection{这一章真正该记住的}
+\label{subsec:ch03-takeaways}
+
+\begin{enumerate}
+  \item \textbf{纯 attention 就够了}：Transformer 不用 RNN、不用卷积，完全靠 attention + 线性层 + 归一化，
+        证明了 ``recurrence'' 不是序列建模的必要条件。
+  \item \textbf{并行训练}是它真正的杀手锏：一句话所有位置同时算，训练速度比 RNN 高得多。
+  \item \textbf{Scaled dot-product attention}：核心公式 $\softmax(QK^\top/\sqrt{d_k})V$，$\sqrt{d_k}$ 是为了让 softmax 不饱和。
+  \item \textbf{Masked self-attention} 让 decoder 在并行训练时仍然只能看过去，把``推理时逐词''和``训练时一次性''统一起来。
+  \item \textbf{Multi-head} 不是变多变大，而是把同样大小的表示\textbf{切成几份}，并行学多种关注模式，再用 $W_O$ 融合。
+  \item \textbf{四件脚手架}缺一不可：FFN 做位置内的非线性消化，残差连接保证深层可训，
+        LayerNorm 稳住激活尺度，位置编码补回 attention 缺失的顺序信息。
+  \item \textbf{Encoder = self-attn + FFN $\times N$；Decoder = masked self-attn + cross-attn + FFN $\times N$。}
+        Encoder--decoder 之间的桥梁就是 cross-attention，本质和第二章那套 attention 是同一回事。
+\end{enumerate}
