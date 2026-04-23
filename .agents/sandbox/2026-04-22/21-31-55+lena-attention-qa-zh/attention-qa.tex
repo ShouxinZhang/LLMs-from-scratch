@@ -1,0 +1,781 @@
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc,positioning,fit}
+
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!55!black}
+\setlist[enumerate]{itemsep=0.35em, topsep=0.45em}
+\setlist[itemize]{itemsep=0.35em, topsep=0.45em}
+
+\tcbset{
+  commonbox/.style={
+    enhanced, breakable,
+    boxrule=0.8pt, arc=2mm,
+    left=1.4mm, right=1.4mm, top=1mm, bottom=1mm, colback=white
+  }
+}
+\newtcolorbox{quoteblock}{commonbox,colframe=black!50,colback=black!3,title=原文段落,fonttitle=\bfseries}
+\newtcolorbox{intuitionblock}{commonbox,colframe=RoyalBlue!70!black,colback=RoyalBlue!4,title=直觉,fonttitle=\bfseries}
+\newtcolorbox{mathbox}[1]{commonbox,colframe=Purple!60!black,colback=Purple!4,title=#1,fonttitle=\bfseries}
+\newtcolorbox{keypointblock}{commonbox,colframe=ForestGreen!60!black,colback=ForestGreen!4,title=一句话总结,fonttitle=\bfseries}
+
+\newtheorem{remark}{备注}
+
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\softmax}{\mathrm{softmax}}
+
+\title{Attention 入门答疑\\\large 两段「不太懂」的原文，逐句拆解}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%==================================================================
+\section{开场：你现在在哪一节}
+
+这两段都来自前一份讲义的 \textbf{第 2 章「Attention」}。
+顺序是：
+
+\begin{enumerate}
+  \item §2.2 \textbf{固定编码器表示的瓶颈}\\
+        ——\emph{先把痛点讲透}：旧 seq2seq 把整句话压成一个固定向量，丢信息、还不能回头看。
+  \item §2.3 \textbf{Attention 的高层视角}\\
+        ——\emph{再给解药}：让解码器每一步\emph{自己挑}该看源端的哪几个词。
+\end{enumerate}
+
+第一段是「为什么需要 attention」，第二段是「attention 到底在干嘛」。
+下面分别拆开看。
+
+\medskip
+\noindent\textit{补：在进入正文前，先把「隐状态 $\vect{s}_k$」这个最容易卡住的术语讲清楚——见后面的「术语补丁」一节。}
+
+%==================================================================
+\section{术语补丁：什么是「隐状态 $\vect{s}_k$」？}
+
+后面两段都会反复出现 $\vect{s}_1, \vect{s}_2, \dots, \vect{s}_m$。
+如果你不熟悉 RNN，可能会卡在「隐状态到底是个啥」上。
+这一节专门把这件事讲透，再回去看后面就顺了。
+
+\subsection{一句话先记住}
+
+\begin{keypointblock}
+\textbf{隐状态 = RNN 在读到第 $k$ 个词时，
+它「脑子里」当前的内部记忆向量。}
+\end{keypointblock}
+
+记号 $\vect{s}_k$ 就是「读完第 1 到第 $k$ 个词\emph{之后}，
+RNN 内部的状态」，
+是一个 $d$ 维向量（比如 $d = 512$）。
+
+\subsection{拿一个画面想}
+
+把 RNN 编码器想成一个\textbf{一边读、一边在便签纸上不停改写笔记}的人：
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}c c c@{}}
+\toprule
+时刻 $k$ & 它刚读到的词 & 它当前的「笔记」（= 隐状态） \\
+\midrule
+1 & ``I''    & $\vect{s}_1$（只看了 ``I'' 之后的脑内状态） \\
+2 & ``love'' & $\vect{s}_2$（看了 ``I love'' 之后的脑内状态） \\
+3 & ``you''  & $\vect{s}_3$（看了 ``I love you'' 之后的脑内状态） \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+每一个 $\vect{s}_k$ 都是一个数值向量，
+编码的是「\emph{到目前为止读过的所有词}留下的记忆」。
+源句有 $m$ 个词，就有 $m$ 个隐状态：$\vect{s}_1, \vect{s}_2, \dots, \vect{s}_m$。
+
+\subsection{RNN 是怎么「写笔记」的}
+
+每读一个新词 $\vect{x}_k$，RNN 用一个固定的小函数 $f$ 把
+「上一刻的笔记」和「这一刻新看到的词」合成新笔记：
+
+\begin{mathbox}{RNN 的更新公式}
+\[
+  \vect{s}_k \;=\; f(\vect{s}_{k-1},\, \vect{x}_k).
+\]
+\begin{itemize}
+  \item $\vect{s}_{k-1}$：上一时刻的笔记（旧记忆）；
+  \item $\vect{x}_k$：第 $k$ 个词的向量（新输入）；
+  \item $f$：RNN/LSTM/GRU 内部那组带参数的小公式，全句子共用同一个 $f$；
+  \item $\vect{s}_k$：更新后的新笔记。
+\end{itemize}
+\end{mathbox}
+
+\textbf{注意：}「隐藏」不是说「藏起来不让你看」，
+而是因为它\emph{不是网络的最终输出}，只是中间的内部状态，
+所以叫 hidden state。
+
+\subsection{为什么图里要说「都留下来不要扔」}
+
+\textbf{旧 seq2seq：}它\emph{只把最后一张笔记} $\vect{s}_m$ 交给解码器，
+前面 $\vect{s}_1, \dots, \vect{s}_{m-1}$ 全部扔掉。\\
+$\Rightarrow$ 解码器只看到一句话的「最终摘要」，看不到细节。
+
+\textbf{Attention 的做法：}\emph{所有 $m$ 张笔记都留着}，组成一个「记忆表」。
+解码器每生成一个目标词，就回过头\emph{在这 $m$ 张笔记里挑}该看哪几张、看多少。
+
+\begin{intuitionblock}
+所以「让编码器把每个时刻的隐状态 $\vect{s}_1, \dots, \vect{s}_m$ 都留下来，不要扔」
+翻译成大白话就是：
+
+\emph{编码器一边读源句一边记笔记，每读一个词都生成一张当时的内部笔记 $\vect{s}_k$。
+旧做法只把最后一张笔记交出去；
+新做法（attention）要求把所有 $m$ 张笔记都交出去，
+留给解码器后面慢慢按需查阅。}
+\end{intuitionblock}
+
+\begin{keypointblock}
+看到 $\vect{s}_k$ 就翻译成：「读到第 $k$ 个源词时，
+编码器内部的那张数值化笔记」。\\
+看到 $\vect{s}_1, \dots, \vect{s}_m$ 就翻译成：「整张源端笔记本」。
+\end{keypointblock}
+
+%==================================================================
+\section{第一段：把宇宙压进 512 个数}
+
+\subsection{原文}
+
+\begin{quoteblock}
+\textbf{2.2.1 背景问题：一个向量装不下整句话}\\[2pt]
+经典 seq2seq 的编码器读完全句之后，吐出一个固定维度的向量
+$\vect{h}^{\text{enc}}_m \in \R^d$，把它当作整句的「意思」交给解码器。但是：
+
+\begin{itemize}
+  \item 句子是 5 个词还是 50 个词，最后给解码器的都是同一个 $d$ 维向量。
+  \item 解码器在生成第 1 个目标词时关心的源信息，和生成第 10 个目标词时关心的源信息，
+        显然不一样，但它每一步看到的「源信息」都是同一个向量。
+\end{itemize}
+
+\textbf{2.2.2 朴素直觉：把宇宙压进 512 个数}\\[2pt]
+Lena 在博客里有一个非常形象的比喻：
+让编码器把整句话压成一个固定向量，
+就像让你把整个宇宙压进 512 个数再交出去。
+短句还行，长句就一定会丢信息。
+
+更糟的是：解码器每一步都要从同一个「宇宙摘要」里
+翻出当前需要的那一小块信息——它根本没机会「回头再看一眼原文」。
+\end{quoteblock}
+
+\subsection{场景：旧式翻译模型怎么工作}
+
+想象你要把一句英文翻成中文。旧式 seq2seq 是这样的：
+
+\begin{enumerate}
+  \item \textbf{编码器}（一个 RNN）一个词一个词地读完整句英文。
+  \item 读完之后，它\emph{挤出}一个固定大小的向量
+        $\vect{h}^{\text{enc}}_m \in \R^d$。
+        这里 $d$ 是预先设定好的（比如 512），
+        \textbf{不管原句多长，这个向量的大小始终是 512}。
+  \item \textbf{解码器}（另一个 RNN）拿到这一个向量，
+        开始一个字一个字地往外吐中文。
+\end{enumerate}
+
+\subsection{第一段（背景问题）在说什么}
+
+这个设计有两个尴尬：
+
+\paragraph{尴尬一：句子长度差很多，但「摘要」只有同一个尺寸。}
+
+\begin{itemize}
+  \item 5 个词的话：``I love you''
+  \item 50 个词的话：``Yesterday I went to the store and bought some bread and milk and \dots''
+\end{itemize}
+
+两种句子最后都被压成\emph{同一个 512 维向量}交给解码器。\\
+$\Rightarrow$ 长句子里的细节肯定塞不下，必然有信息丢失。
+
+\paragraph{尴尬二：解码器每一步看到的「源信息」是同一个向量。}
+
+\begin{itemize}
+  \item 解码器吐第 1 个中文字时，它最关心英文里的开头几个词。
+  \item 解码器吐第 10 个中文字时，它最关心英文里中间或末尾的词。
+\end{itemize}
+
+但旧设计里，解码器\emph{每一步都在看那个完全一样的 $\vect{h}^{\text{enc}}_m$}。
+它\textbf{没有「现在我该多看一眼原文里第 7 个词」的能力}——
+因为原文已经不见了，只剩那个压扁的摘要。
+
+\subsection{第二段（朴素直觉）在说什么}
+
+Lena 用一个比喻让你直观感受到这有多荒谬：
+
+\begin{intuitionblock}
+让编码器把整句话压成一个固定向量，
+\emph{就像让你把整个宇宙压进 512 个数再交出去。}
+\end{intuitionblock}
+
+\begin{itemize}
+  \item 「宇宙」= 一句话里所有的词、语法、含义、上下文。
+  \item 「512 个数」= 那个固定大小的向量。
+\end{itemize}
+
+短句子像「猫」「天空蓝」，500 多个数还够用；
+但「《红楼梦》第三回的剧情」要塞进 512 个数，必然丢一大堆。
+
+更糟糕的是后半句：
+
+\begin{quote}
+解码器每一步都要从同一个「宇宙摘要」里翻出当前需要的那一小块信息——
+它根本没机会「回头再看一眼原文」。
+\end{quote}
+
+意思是：哪怕你把宇宙压成了 512 个数，至少别拦着我回去翻原书啊！
+但旧模型就是不让你回去翻——你只能看摘要，原文已经被扔掉了。
+
+\subsection{这一节为什么重要}
+
+它是\emph{用来引出 attention 的痛点描述}。下一节（也就是第二段那张图）就会讲：
+
+\begin{quote}
+既然「压成一个向量」这么难受，那干脆\textbf{别压了}——
+编码器把每个词的状态 $\vect{s}_1, \vect{s}_2, \dots, \vect{s}_m$ \emph{全部留着}，
+解码器每一步\emph{自己挑}该看哪几个，按权重加权求和。
+\end{quote}
+
+这个「按需回头看原文」的机制，就是 \textbf{attention}。
+
+\begin{keypointblock}
+先把「不能回头看原文」这件事的痛感讲透，
+下一节 attention 出场时你才会觉得「啊，确实需要它」。
+\end{keypointblock}
+
+%==================================================================
+\section{第二段：加权查表}
+
+\subsection{原文}
+
+\begin{quoteblock}
+\textbf{2.3.1 背景问题：能不能让解码器「回头看」？}\\[2pt]
+既然「压成一个向量」是瓶颈，那很自然的想法是：
+
+\begin{itemize}
+  \item 让编码器把每个时刻的隐状态 $\vect{s}_1, \dots, \vect{s}_m$ 都留下来，不要扔。
+  \item 解码器在第 $t$ 步，根据当前自己的状态 $\vect{h}_t$，
+        自己决定该重点看源端的哪些位置。
+\end{itemize}
+
+关键约束是：这个「决定看哪里」的过程必须可微，
+否则没法用反向传播一起训练。
+
+\textbf{2.3.2 朴素直觉：加权查表}\\[2pt]
+把编码器输出 $\vect{s}_1, \dots, \vect{s}_m$ 想成一张「源端记忆表」。
+解码器每一步做的事就是一次软查表：
+
+\begin{enumerate}
+  \item 拿出一个「查询」$\vect{h}_t$（解码器当前状态）。
+  \item 对每条记忆 $\vect{s}_k$ 打一个相关性分数 $e_{tk}$。
+  \item 把分数过一个 softmax 得到「看每条记忆的比例」$\alpha_{tk}$。
+  \item 按比例把所有记忆加权求和，得到这一步的「context」$\vect{c}_t$。
+\end{enumerate}
+
+注意整个过程没有 argmax、没有硬选择，所以处处可导，
+可以端到端训练。模型自己会学出「在第 $t$ 步该看哪里」，
+不需要我们提供人工对齐。
+\end{quoteblock}
+
+\subsection{两个核心比喻：「记忆表」+「软查表」}
+
+\begin{intuitionblock}
+把这一段的整个画面想成「图书馆查资料」：
+
+\begin{itemize}
+  \item 编码器输出 $\vect{s}_1, \dots, \vect{s}_m$
+        $\Rightarrow$ \textbf{书架}，每本书是源端的一个词；
+  \item 解码器当前状态 $\vect{h}_t$
+        $\Rightarrow$ 你心里那条\textbf{查询请求}：「我现在想找什么？」；
+  \item 每个相关性分数 $e_{tk}$
+        $\Rightarrow$ 第 $k$ 本书\textbf{有多符合}你的请求；
+  \item softmax 之后的 $\alpha_{tk}$
+        $\Rightarrow$ 你打算\textbf{看每本书的多大比例}（加起来等于 1）；
+  \item 加权求和得到 $\vect{c}_t$
+        $\Rightarrow$ 你最终从这些书里读到的\textbf{综合答案}。
+\end{itemize}
+\end{intuitionblock}
+
+\subsection{第一段（背景问题）在说什么}
+
+\paragraph{第 1 条「都留下来，不要扔」。}
+旧模型只把编码器的\emph{最后一个}状态 $\vect{h}^{\text{enc}}_m$ 交给解码器，
+其它隐状态全丢了。新做法是把所有 $m$ 个时刻的中间状态
+$\vect{s}_1, \vect{s}_2, \dots, \vect{s}_m$ 都\emph{保留}。
+
+\begin{itemize}
+  \item 旧：编码器 = $m$ 个状态都算了，但只把最后 1 个交出去；
+  \item 新：编码器 = $m$ 个状态都算了，并且\emph{全部交出去}。
+\end{itemize}
+
+\paragraph{第 2 条「自己决定该重点看哪些位置」。}
+解码器在生成第 $t$ 个目标词时，它自己有一个内部状态 $\vect{h}_t$
+（「我当前想说的是这种意思」）。
+它\emph{用这个 $\vect{h}_t$ 当线索}，
+去和每一条 $\vect{s}_k$ 比对，自动算出「这一步我要重点看 $\vect{s}_3$ 和 $\vect{s}_5$」。
+
+\paragraph{关键约束：「必须可微」。}
+神经网络靠\textbf{反向传播}训练。
+反向传播要求每一步都\emph{可导}：损失对参数的梯度要能一路传回去。
+\textbf{硬选择}（比如「我就只看第 3 条」）是离散的，导数等于 0 或不存在，
+梯度断了，模型学不会。
+所以必须用\emph{软选择}：「第 3 条的权重 0.6，第 5 条的权重 0.3，其它共 0.1」。
+权重可以是任意实数 $\Rightarrow$ 处处可导 $\Rightarrow$ 反向传播能过去。
+
+\begin{keypointblock}
+背景问题这一段的总结：\\
+（1）原始信息全部留住；
+（2）解码器每步根据自己的状态自动加权看；
+（3）「加权」是为了\emph{可导}，可导才能用神经网络的方法训练。
+\end{keypointblock}
+
+\subsection{第二段（朴素直觉）：四步软查表}
+
+把抽象的话翻成数学，正好就是 4 行公式。
+设源端有 $m$ 个词，编码器隐状态 $\vect{s}_1, \dots, \vect{s}_m$；
+解码器在第 $t$ 步的状态是 $\vect{h}_t$。
+
+\begin{mathbox}{Attention 的四步}
+\begin{enumerate}
+  \item \textbf{准备查询：} 当前查询就是 $\vect{h}_t$。
+  \item \textbf{打相关性分数：} 对每个 $k = 1, \dots, m$，
+  \[
+    e_{tk} \;=\; \mathrm{score}(\vect{h}_t, \vect{s}_k).
+  \]
+  $\mathrm{score}(\cdot, \cdot)$ 可以是点积 $\vect{h}_t^\top \vect{s}_k$，
+  也可以是 MLP，也可以是双线性 $\vect{h}_t^\top W \vect{s}_k$。
+  \item \textbf{归一化成「看的比例」：}
+  \[
+    \alpha_{tk} \;=\;
+    \frac{\exp(e_{tk})}{\sum_{j=1}^{m} \exp(e_{tj})}
+    \;=\; \softmax_k(e_{tk}).
+  \]
+  这一步保证 $\sum_k \alpha_{tk} = 1$ 且每个都非负，
+  解释成「这一步看第 $k$ 个源词的比例」。
+  \item \textbf{加权求和得到 context：}
+  \[
+    \vect{c}_t \;=\; \sum_{k=1}^{m} \alpha_{tk}\,\vect{s}_k.
+  \]
+  $\vect{c}_t$ 就是这一步\emph{专门为第 $t$ 个目标词\textbf{量身定制}的源端摘要}。
+\end{enumerate}
+\end{mathbox}
+
+\subsection{为什么这一段叫「加权\emph{查表}」}
+
+把它和「在 Python 字典里查一个 key」对比一下，最容易看清楚：
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{4.5cm} p{4cm} p{5cm}@{}}
+\toprule
+普通查表 & Attention（软查表） & 关键差别 \\
+\midrule
+key 必须\emph{完全相等}     & 用打分函数 $e_{tk}$ 算\emph{相似度} & 软的 \\
+只返回 1 个 value           & 返回所有 value 的加权和              & 软的 \\
+判断「相等」是\emph{离散}的 & softmax 是\emph{连续可导}的         & 可训练的 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+「软查表」三个字精准地概括了这件事：\textbf{比对} + \textbf{加权} + \textbf{求和}，
+全程可导。
+
+\subsection{为什么强调「没有 argmax、没有硬选择」}
+
+\begin{intuitionblock}
+如果模型在第 $t$ 步硬性「\emph{挑一个}」最相关的源词，那就是 argmax，
+对应「我只看第 3 条记忆」。argmax 是\emph{阶跃函数}，导数几乎处处为 0。
+
+\textbf{后果：}模型不知道「应该把分数稍微挪一点点会变好还是变坏」，
+反向传播完全没法告诉它该怎么改参数。
+
+\textbf{软查表的妙处：}权重是连续的实数。
+权重稍微变化，最后的 $\vect{c}_t$ 也会跟着平滑变化，
+损失也跟着平滑变化，
+所以梯度有方向感，模型才能慢慢学出
+「在第 $t$ 步看哪里更好」。
+\end{intuitionblock}
+
+\subsection{「不需要人工对齐」是什么意思}
+
+「\textbf{对齐（alignment）}」是机器翻译里的传统术语，指
+「源句的第 $k$ 个词对应到目标句的第 $t$ 个词」。
+统计翻译时代要专门用算法（如 IBM Model 1/2/3）去估对齐，
+甚至请人工标注。
+
+而 attention 不需要——
+我们只给模型「源句」和「目标句」这两端的对照，
+模型在训练损失（生成目标句的对数似然）的驱动下，
+会\emph{自动}让那些 $\alpha_{tk}$ 在「正确对应位置」上变大。
+这就是「\emph{学出来了}对齐」，而不是\emph{被告知}对齐。
+
+\begin{keypointblock}
+朴素直觉这一段就是把上面背景问题里两条诉求
+（「都留下来」+「自己决定看哪里」+「必须可微」）
+精确写成 4 步：\textbf{查询 $\to$ 打分 $\to$ softmax $\to$ 加权求和}。
+\end{keypointblock}
+
+%==================================================================
+\section{补讲：什么是「条件语言模型」(CLM)}
+
+这一段你看的是 §1.3。它在解释一个概念：
+\textbf{seq2seq 的 decoder 其实就是一个特殊的语言模型}。
+但很多人卡在「条件」这两个字上，所以在这里专门展开。
+
+\subsection{先回忆：普通语言模型 (LM) 在干嘛}
+
+\begin{intuitionblock}
+普通语言模型只做一件事：
+
+\begin{quote}
+\textit{给我前面写过的几个词，告诉我下一个词最可能是什么。}
+\end{quote}
+
+它\emph{没有}任何外部输入——没人给它一张图、一句英文，
+它就是在「凭空续写」。
+\end{intuitionblock}
+
+数学上，对一句话 $\vect{y} = (y_1, y_2, \dots, y_T)$，
+LM 把整句的概率拆成「左到右一个一个写」的链式乘积：
+
+\begin{mathbox}{普通语言模型的概率分解}
+\[
+  p(\vect{y}) \;=\; \prod_{t=1}^{T} p(y_t \mid y_{<t}),
+  \qquad y_{<t} := (y_1, \dots, y_{t-1}).
+\]
+\end{mathbox}
+
+读法：「整句出现的概率 = 一个个词依次出现的条件概率连乘起来。」
+其中 $y_{<t}$ 只是一个简写，意思是「截至第 $t$ 步之前已经写出来的所有词」。
+
+\subsection{条件语言模型 (CLM) 多了什么}
+
+\begin{intuitionblock}
+条件语言模型只比普通 LM 多一样东西：\textbf{一个外部条件 $\vect{x}$}。
+\begin{itemize}
+  \item 翻译里，$\vect{x}$ 是源句（英文）；
+  \item 摘要里，$\vect{x}$ 是原文；
+  \item 图像描述里，$\vect{x}$ 是一张图。
+\end{itemize}
+
+它的工作变成：
+
+\begin{quote}
+\textit{给我前面写过的几个词，\textbf{以及一份外部材料 $\vect{x}$}，
+告诉我下一个词最可能是什么。}
+\end{quote}
+\end{intuitionblock}
+
+写成公式只是把每一个条件概率都「再加一个 $\vect{x}$」：
+
+\begin{mathbox}{条件语言模型的概率分解}
+\[
+  p(\vect{y} \mid \vect{x}) \;=\; \prod_{t=1}^{T} p(y_t \mid y_{<t},\, \vect{x}).
+\]
+\end{mathbox}
+
+\subsection{逐符号翻译}
+
+很多人卡在公式的符号上，把每个符号翻成中文：
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}c l@{}}
+\toprule
+符号 & 翻译 \\
+\midrule
+$\vect{x}$        & 源端给的「材料」（源句、图片、文档……） \\
+$\vect{y}$        & 我要写出来的目标句  $(y_1, \dots, y_T)$ \\
+$y_t$             & 目标句第 $t$ 个词 \\
+$y_{<t}$          & 截至第 $t$ 步\emph{之前}已写出的所有词 \\
+$p(y_t \mid y_{<t}, \vect{x})$ & 在「已经写了什么」+「材料是啥」给定的条件下，第 $t$ 个词的概率 \\
+$\prod_{t=1}^{T}$ & 把 $T$ 个词的条件概率全部相乘 \\
+$p(\vect{y} \mid \vect{x})$ & 在材料 $\vect{x}$ 给定的情况下，写出整句 $\vect{y}$ 的概率 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{为什么写成「连乘」？}
+
+\begin{intuitionblock}
+因为 decoder 是\textbf{一个词一个词写}出来的：
+先写 $y_1$，再用 $y_1$ 当历史去写 $y_2$，
+再用 $(y_1, y_2)$ 当历史去写 $y_3$……
+
+每写一步都是一次「在已有历史下挑下一个词」，
+所以整句的概率就是这些「每一步条件概率」的乘积。
+\end{intuitionblock}
+
+链式法则告诉我们：任何联合概率都可以分成这样的连乘。这里只是把这条
+普适的概率法则套到「按时间顺序生成」这个特殊场景上。
+
+\subsection{LM 与 CLM 的对比}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{3.5cm} p{4.5cm} p{5cm}@{}}
+\toprule
+ & 普通 LM & 条件 LM (= seq2seq decoder) \\
+\midrule
+建模目标            & $p(\vect{y})$              & $p(\vect{y} \mid \vect{x})$ \\
+有没有外部输入       & 没有                        & 有，记作 $\vect{x}$ \\
+每一步在算啥         & $p(y_t \mid y_{<t})$       & $p(y_t \mid y_{<t}, \vect{x})$ \\
+经典任务            & 续写、文本生成              & 翻译、摘要、问答、图像描述 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keypointblock}
+\textbf{seq2seq = 条件语言模型。}\\
+和普通 LM 在结构上几乎一样，
+唯一差别是：「写每个词的时候，它可以\emph{额外看一眼}源端材料 $\vect{x}$」。
+\end{keypointblock}
+
+\subsection{这一节怎么和 attention 衔接}
+
+普通 LM 看「自己已经写了什么」就够了。
+CLM 多了 $\vect{x}$ 之后，问题就变成：
+
+\begin{quote}
+\textbf{怎么把 $\vect{x}$ 传给 decoder？}
+\end{quote}
+
+最早的答案：把 $\vect{x}$ 用 RNN 编码成\emph{一个固定向量}
+$\vect{h}^{\text{enc}}_m$，
+丢给 decoder 当起点——这就是 §2.2 那个「装不下整句话」的方案。
+
+后来的答案：把 $\vect{x}$ 编码成\emph{一整张笔记}
+$\vect{s}_1, \dots, \vect{s}_m$，
+让 decoder 每写一个词都用 attention 临时挑一份——
+这就是 §2.3 的「软查表」方案。
+
+\medskip
+所以这条链是：
+\begin{center}
+\textbf{LM} $\;\to\;$ \textbf{CLM} $\;\to\;$ \textbf{怎么传 $\vect{x}$} $\;\to\;$ \textbf{Attention}
+\end{center}
+
+%==================================================================
+\section{补讲：多头注意力 (Multi-Head Attention) 和 QKV 的关系}
+
+这一段是 Transformer 的多头注意力。
+你的疑问其实就是：
+\textbf{「QKV 我大概懂了，那\emph{多头}到底多在哪？参数还是那一份吗？还是真的开了 $h$ 套？」}
+下面把这件事彻底讲透。
+
+\subsection{先回忆一下「单头」QKV 在干嘛}
+
+回顾 §2.3 那张「软查表」：
+
+\begin{enumerate}
+  \item 把每个 token 的向量分别投影成三份角色：
+        $Q = X W_Q,\; K = X W_K,\; V = X W_V$；
+  \item 用 $Q$ 去和 $K$ 打分、做 softmax，得到「我看每个 token 的比例」；
+  \item 按比例加权求和 $V$，得到输出。
+\end{enumerate}
+
+\begin{mathbox}{单头缩放点积注意力}
+\[
+  \mathrm{Attention}(Q, K, V) \;=\;
+  \softmax\!\left(\frac{Q K^\top}{\sqrt{d_k}}\right) V.
+\]
+形状（$X \in \R^{n \times d_{\text{model}}}$，例如 $d_{\text{model}} = 512$）：\\
+$Q, K, V \in \R^{n \times d_{\text{model}}}$，输出也是 $n \times d_{\text{model}}$。
+\end{mathbox}
+
+\textbf{单头的局限}：一次注意力只能学出\emph{一种}「看哪里」的规律。
+但语言里同时存在多种关系：
+\begin{itemize}
+  \item 主语 $\leftrightarrow$ 谓语；
+  \item 形容词 $\leftrightarrow$ 它修饰的名词；
+  \item 代词 $\leftrightarrow$ 它指代的对象；
+  \item 短语边界 / 标点 / 邻居……
+\end{itemize}
+一个头很难同时管这么多种「应该看哪」。
+
+\subsection{多头的朴素直觉}
+
+\begin{intuitionblock}
+\textbf{多头 = 同时开 $h$ 套「看法」，每套独立地学一种关注模式，最后把它们的结果拼起来。}\\
+你可以想成：与其请一个全能眼睛同时盯所有关系，
+不如请\emph{$h$ 个各看一种}的小眼睛同时看，
+最后把它们写的笔记拼成一份大笔记。
+\end{intuitionblock}
+
+\subsection{多头的数学表达}
+
+设有 $h$ 个头（典型 $h = 8$），每个头自己有三组小投影矩阵
+$W_Q^i,\; W_K^i,\; W_V^i$（$i = 1, \dots, h$），
+还有一个公用的输出投影 $W_O$：
+
+\begin{mathbox}{Multi-Head Attention}
+\[
+  \mathrm{head}_i \;=\; \mathrm{Attention}(Q W_Q^i,\; K W_K^i,\; V W_V^i),
+\]
+\[
+  \mathrm{MultiHead}(Q, K, V) \;=\;
+  \mathrm{Concat}(\mathrm{head}_1, \dots, \mathrm{head}_h)\, W_O.
+\]
+其中 $W_Q^i, W_K^i, W_V^i \in \R^{d_{\text{model}} \times d_k}$，
+$W_O \in \R^{d_{\text{model}} \times d_{\text{model}}}$，
+$d_k = d_v = d_{\text{model}} / h$。
+\end{mathbox}
+
+把它和单头对比起来看，差别就两件事：
+
+\begin{enumerate}
+  \item 投影矩阵从「\emph{1 套大}」 $W_Q, W_K, W_V$
+        变成「\emph{$h$ 套小}」 $W_Q^i, W_K^i, W_V^i$；
+        每套把 $d_{\text{model}}$ 投到\textbf{更小}的 $d_k = d_{\text{model}}/h$ 维。
+  \item 算完 $h$ 份 head 输出，拼起来再过一个输出投影 $W_O$。
+\end{enumerate}
+
+\begin{remark}
+\textbf{尺寸的关键约束：}$d_k = d_{\text{model}} / h$。\\
+这意味着「每个头看的维度变小了」，但「头数变多了」，
+两者乘起来\emph{刚好回到 $d_{\text{model}}$}——所以总尺寸守恒。
+$h = 8, d_{\text{model}} = 512$ 时，每个头只有 $64$ 维。
+\end{remark}
+
+\subsection{你看的那张图里「reshape + transpose」到底在做什么}
+
+图里那段「代码 / 工程对应」最容易让人懵。
+其实它在解决一个工程问题：\emph{别真的开 $h$ 个 for 循环跑 $h$ 次注意力}，
+那样太慢。聪明的做法是\textbf{一次大矩阵乘 + 一次 reshape}，
+让 GPU 一口气把 $h$ 个头并行算掉。
+
+\begin{mathbox}{形状变换的逐步图解}
+设 batch 大小 $B$，序列长度 $n$，$d = d_{\text{model}}$，$d_k = d/h$。
+
+\begin{enumerate}
+  \item \textbf{一个大投影做完所有头的 Q：}
+        $X \in \R^{B \times n \times d}$
+        $\xrightarrow{W_Q\, \in \R^{d \times d}}$
+        $Q \in \R^{B \times n \times d}$。\\
+        \emph{看起来还是 $d$ 维，但其实里面已经塞着 $h$ 段独立的 $d_k$ 维向量了。}
+  \item \textbf{reshape 把最后一维拆成 $(h, d_k)$：}
+        $\R^{B \times n \times d} \;\to\; \R^{B \times n \times h \times d_k}$。
+  \item \textbf{transpose 让 $h$ 跑到第二位：}
+        $\R^{B \times n \times h \times d_k} \;\to\; \R^{B \times h \times n \times d_k}$。\\
+        \emph{现在 $h$ 维充当一个新的「批量轴」——每个头各算各的，互不干扰。}
+  \item \textbf{对 K、V 做完全一样的三步}，得到三个 $B \times h \times n \times d_k$ 的张量。
+  \item \textbf{一次 batched matmul 同时算完 $h$ 个头的 attention：}
+        \[
+          \mathrm{scores} = Q K^\top \in \R^{B \times h \times n \times n},\quad
+          \mathrm{out} = \softmax(\mathrm{scores}/\sqrt{d_k})\,V
+          \in \R^{B \times h \times n \times d_k}.
+        \]
+  \item \textbf{transpose 回去 + reshape 拼接 + 过 $W_O$：}
+        $\R^{B \times h \times n \times d_k}
+        \;\to\; \R^{B \times n \times h \times d_k}
+        \;\to\; \R^{B \times n \times d}
+        \xrightarrow{W_O} \R^{B \times n \times d}$。
+\end{enumerate}
+\end{mathbox}
+
+「\emph{reshape 让 $h$ 变成 batch 轴}」的意思就是第 3 步：
+原来 $h$ 是「同一份数据里的不同切片」，
+通过 transpose 变成「批量维度里的并行样本」，
+GPU 就可以一次性算 $h$ 份注意力。
+
+\subsection{为什么「单头 vs 多头」参数量是一样的}
+
+很多人第一次看会觉得「多头是不是参数变 $h$ 倍？」
+答案：\textbf{不是}。来对比一下：
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}p{4.2cm} p{5cm} p{5cm}@{}}
+\toprule
+ & 单头（用 $d_{\text{model}}$ 做注意力） & 多头（$h$ 个头，每头 $d_k = d_{\text{model}}/h$）\\
+\midrule
+$W_Q$ 的形状     & $d_{\text{model}} \times d_{\text{model}}$        & $h$ 个 $d_{\text{model}} \times (d_{\text{model}}/h)$ \\
+$W_Q$ 的总参数   & $d_{\text{model}}^2$                              & $h \cdot d_{\text{model}} \cdot (d_{\text{model}}/h) = d_{\text{model}}^2$ \\
+$W_K, W_V$       & 同上 $d_{\text{model}}^2$ 各一                    & 同上 $d_{\text{model}}^2$ 各一 \\
+$W_O$            & 没有（或视作恒等）                                & $d_{\text{model}}^2$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+主体的 $W_Q, W_K, W_V$ 在两种写法下\emph{总参数完全一样}，
+都是 $3 d_{\text{model}}^2$。
+多头只是把同一份参数\emph{切成 $h$ 份}，让每一片只看一个 $d_k$ 维子空间。
+
+\begin{intuitionblock}
+所以正确的画面是：
+\textbf{多头不是「叠 $h$ 个独立的网络」，而是「把同一份参数切成 $h$ 块去看不同维度」。}
+增加的只有最后一个 $W_O$（输出投影），用来重新融合 $h$ 段。
+\end{intuitionblock}
+
+\subsection{多头 vs 单头：到底差在哪？}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}p{4cm} p{5cm} p{5cm}@{}}
+\toprule
+ & 单头 & 多头 \\
+\midrule
+注意力矩阵数量 & 1 张 ($n \times n$)              & $h$ 张 ($n \times n$) \\
+每个头看几维？ & $d_{\text{model}}$                & $d_k = d_{\text{model}}/h$ \\
+能学几种关注模式？ & 1 种                          & $h$ 种（实际上每个头会专攻一类关系） \\
+总参数量       & $\approx 3 d_{\text{model}}^2$    & $\approx 4 d_{\text{model}}^2$（多了 $W_O$） \\
+GPU 并行       & 已并行                            & 仍然并行（reshape 后 $h$ 当 batch 轴） \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{多头和「以前的 QKV」是什么关系？}
+
+直接回答你的疑问：
+
+\begin{keypointblock}
+\textbf{多头 = 把以前那一份 QKV 在「特征维」上切成 $h$ 份，每一份独立做注意力，最后拼回来再过一个 $W_O$。}\\
+QKV 这套机制\emph{完全没有变}，
+只是\textbf{在哪一段子空间上做}从「整段 $d_{\text{model}}$」变成
+「$h$ 段各 $d_k$」，每段学一种「看哪里」的规律。
+\end{keypointblock}
+
+形象一点：
+
+\begin{itemize}
+  \item 单头 QKV 像\textbf{一只眼睛}盯着 512 维全空间；
+  \item 多头 QKV 像\textbf{8 只眼睛}各盯一个 64 维小空间，
+        看完写各自的笔记，最后用 $W_O$ 把 8 段笔记统一润色成一份完整的 512 维输出。
+\end{itemize}
+
+最后注意一点：图里说「单头和多头\emph{参数量一样}」，
+严格讲是\emph{主体投影} $W_Q, W_K, W_V$ 一样；
+多头多出来的是 $W_O$。但和模型其它部分（FFN 等）相比，这点开销几乎不计。
+
+%==================================================================
+\section{把两段合起来一句话讲完}
+
+\begin{enumerate}
+  \item §2.2 告诉你：旧 seq2seq 把整句压成一个固定向量，
+        \textbf{装不下、还不能回头看}——这是病。
+  \item §2.3 告诉你：药方就是\textbf{软查表}——
+        编码器把所有时刻的隐状态都留着当「记忆」，
+        解码器每一步用自己的状态当「查询」，
+        给每条记忆打一个 softmax 权重，
+        最后加权求和得到\emph{这一步专属的}源端 context $\vect{c}_t$。
+  \item 这件事处处可导 $\Rightarrow$ 可以\textbf{端到端}训练，
+        模型\emph{自己学出}「该看哪里」，不需要人工对齐。
+\end{enumerate}
+
+\begin{keypointblock}
+\textbf{Attention 的本质就一句话：}\\
+不再压缩源端信息，而是在每一步\emph{临时按需重新组合}它。
+\end{keypointblock}
+
+\end{document}
