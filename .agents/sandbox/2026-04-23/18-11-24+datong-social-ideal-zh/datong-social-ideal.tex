@@ -1,0 +1,197 @@
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,shapes.geometric,positioning}
+
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!55!black}
+\setlist[enumerate]{itemsep=0.35em,topsep=0.45em}
+\setlist[itemize]{itemsep=0.35em,topsep=0.45em}
+
+\tcbset{
+  commonbox/.style={enhanced,breakable,boxrule=0.8pt,arc=2mm,
+    left=1.4mm,right=1.4mm,top=1mm,bottom=1mm,colback=white}
+}
+\newtcolorbox{articleblock}{commonbox,colframe=BrickRed!65!black,colback=BrickRed!4,
+  title=原文核心,fonttitle=\bfseries}
+\newtcolorbox{intuitionblock}{commonbox,colframe=RoyalBlue!70!black,colback=RoyalBlue!4,
+  title=朴素理解,fonttitle=\bfseries}
+\newtcolorbox{lifeblock}{commonbox,colframe=ForestGreen!60!black,colback=ForestGreen!4,
+  title=生活类比,fonttitle=\bfseries}
+\newtcolorbox{keypointblock}{commonbox,colframe=black!65,colback=black!3,
+  title=一句话记住,fonttitle=\bfseries}
+\newtcolorbox{compareblock}{commonbox,colframe=Purple!60!black,colback=Purple!4,
+  title=古今对照,fonttitle=\bfseries}
+
+\title{``天下为公、天下大同''\\ \large 从《求是》文章里读懂它的当代价值}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{articleblock}
+2026 年 4 月 14 日《求是》网刊发文章《天下为公、天下大同社会理想的当代价值》。
+核心论点：
+\begin{itemize}
+  \item ``天下为公、天下大同''是中华文明关于人类社会的整体理想，
+        主张以天下苍生为本、反对私利至上、向往人人平等。
+  \item 这一理想与马克思主义、共产主义理想信念高度契合，
+        是\emph{人类命运共同体}重大理念的历史文化源流。
+  \item 面对百年未有之大变局，它为走出集团对抗、零和博弈
+        提供了可贵的思想资源。
+\end{itemize}
+\end{articleblock}
+
+\tableofcontents
+\newpage
+
+\section{这篇文章到底在讲什么}
+
+用一句话说：\\
+\textbf{中国古人两千多年前提出的``天下大同''理想，今天仍然在影响我们
+如何看世界、如何参与全球治理。}
+
+文章把这条思想链拆成三层：
+
+\begin{enumerate}[label=\textbf{层次\arabic*.}]
+  \item \textbf{历史层}：``天下为公''出自《礼记·礼运》，是儒家对
+        理想社会的描述。
+  \item \textbf{理论层}：这一理想与马克思主义``人的自由全面发展''
+        高度契合，所以马克思主义能在中国扎根。
+  \item \textbf{实践层}：它直接滋养了今天的``人类命运共同体''理念，
+        并被连续 9 年写入联合国大会决议。
+\end{enumerate}
+
+\section{朴素理解：用生活语言翻译一遍}
+
+\begin{intuitionblock}
+\textbf{``天下为公''}：整个社会的资源、权力、机会，不是为少数人服务的，
+而是为所有人服务的。用今天的话说，就是``公共品归公共所有''。
+
+\textbf{``天下大同''}：不是所有人都变成一模一样，而是\emph{每个人都能
+好好活，彼此之间不互相伤害，大家共同繁荣}。就像一桌饭菜，不是
+抢着吃，而是每人都有份，还能互相添菜。
+\end{intuitionblock}
+
+\begin{lifeblock}
+\textbf{类比 1：小区公共空间。}\\
+小区里的花园、电梯、健身区是``天下为公''——不属于任何一户，
+但每一户都能用。如果有人把花园圈起来只给自己用，就违背了``为公''。
+
+\textbf{类比 2：班级互助。}\\
+班里成绩好的同学帮成绩差的补课，不是因为老师强迫，而是相信
+``大家好才是真的好''。这就是``大同''的朴素版：不把同学当对手，
+而是当伙伴。
+\end{lifeblock}
+
+\section{为什么马克思主义能在中国扎根？}
+
+\begin{compareblock}
+\begin{itemize}
+  \item \textbf{天下大同}：反对压迫、向往人人平等、追求共同繁荣。
+  \item \textbf{共产主义}：消灭剥削、实现人的自由全面发展、建立
+        没有阶级的社会。
+\end{itemize}
+两者说的不是同一件事，但\emph{方向高度一致}——
+都相信人类可以过得比``你输我赢''更好。
+这种文化土壤，让马克思主义传入中国后不是``外来嫁接''，
+而是``落地生根''。
+\end{compareblock}
+
+\begin{lifeblock}
+\textbf{类比 3：两种语言说同一件事。}\\
+你用普通话讲``要互相帮助''，我用方言也讲``要互相帮助''，
+虽然用词不同，但大家一听就懂。马克思主义和中华传统文化
+就是这种关系：语言不同，但``底层价值观''相通。
+\end{lifeblock}
+
+\section{从``大同''到``人类命运共同体''}
+
+文章明确指出：\\
+\textbf{``天下为公、天下大同的社会理想作为构建人类命运共同体重大理念的历史文化源流。''}
+
+这条传承链可以这样画：
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth,every node/.style={align=center}]
+  \node[draw,RoyalBlue!70!black,fill=RoyalBlue!6,rounded corners,inner sep=6pt]
+    (a) {《礼记·礼运》\\天下为公、天下大同};
+  \node[draw,ForestGreen!60!black,fill=ForestGreen!6,rounded corners,inner sep=6pt,
+    right=2.2cm of a] (b) {马克思主义传入\\与中华优秀传统文化契合};
+  \node[draw,BrickRed!65!black,fill=BrickRed!6,rounded corners,inner sep=6pt,
+    right=2.2cm of b] (c) {人类命运共同体\\重大理念};
+  \draw[->,thick] (a) -- (b) node[midway,above,font=\small] {文化土壤};
+  \draw[->,thick] (b) -- (c) node[midway,above,font=\small] {理念传承};
+\end{tikzpicture}
+\end{center}
+
+\begin{lifeblock}
+\textbf{类比 4：家族家训变成现代家风。}\\
+爷爷说``做人要厚道，邻里要互助''（古代理想）；
+爸爸把这句话带进社区工作（理论契合）；
+你今天参与国际志愿者项目，帮别国修学校（人类命运共同体）。
+三代人做的事不同，但``底层信念''一脉相承。
+\end{lifeblock}
+
+\section{它如何帮我们走出``零和博弈''？}
+
+\begin{articleblock}
+原文：``为人类走出集团对抗、零和博弈提供了可贵思想资源。''
+\end{articleblock}
+
+\begin{intuitionblock}
+\textbf{零和博弈}：你赢我就输，蛋糕只有一块，分完就没了。\\
+\textbf{天下大同思维}：蛋糕可以一起做大，你赢我也赢，大家都能分到更多。
+这就是今天常说的\emph{合作共赢}。
+\end{intuitionblock}
+
+\begin{lifeblock}
+\textbf{类比 5：拼多多 vs. 一起种树。}\\
+零和版：两个人抢一把铲子，谁抢到谁种树，另一个只能看着。\\
+大同版：你带铲子，我带树苗，他带水，三个人一起种，最后每人都有树荫乘凉。
+\end{lifeblock}
+
+\begin{lifeblock}
+\textbf{类比 6：班级排名的两种算法。}\\
+旧算法：只公布前 10 名，其他人都是``输家''。\\
+大同算法：设立``进步奖''''互助奖''''公益奖''，让每个人都能被看见。
+后者就是``天下大同''在教育里的朴素体现。
+\end{lifeblock}
+
+\section{联合国为什么连续 9 年写进决议？}
+
+\begin{itemize}
+  \item 当今世界面临气候变化、传染病、AI 治理等\emph{全球性问题}，
+        没有任何一个国家能单独解决。
+  \item ``人类命运共同体''给出的方案是：
+        \textbf{大家商量着办，而不是谁拳头大谁说了算。}
+  \item 这恰好呼应了``天下为公''的精神：
+        全球公共品（气候、卫生、和平）应该由全人类共同维护。
+\end{itemize}
+
+\begin{lifeblock}
+\textbf{类比 7：合租公寓的公共协议。}\\
+几个人合租，电费怎么摊、卫生谁负责，不能只由房东一个人拍板，
+而要大家商量。地球就是``全人类的合租房''，
+``人类命运共同体''就是那份大家商量出来的公共协议。
+\end{lifeblock}
+
+\section{一句话记住全文}
+
+\begin{keypointblock}
+``天下为公、天下大同''不是一句古话，而是一套\emph{活着的价值观}：
+它让马克思主义在中国扎根，让``人类命运共同体''有了文化根脉，
+也让今天的中国在世界上主张``大家一起好，而不是只有我好''。
+\end{keypointblock}
+
+\bigskip
+\noindent\textbf{参考来源：}《天下为公、天下大同社会理想的当代价值》，求是网，2026-04-14，\\
+\url{https://www.qstheory.cn/20260414/25a1e25ff97042c5a9f7d0b89ed27eed/c.html}
+
+\end{document}
